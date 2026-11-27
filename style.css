@@ -577,9 +577,12 @@ body.inonl #give{display:none!important}
 .coopsc span.me{box-shadow:inset 0 0 0 2px var(--ink)}
 .coopsc b{font:400 16px var(--hf);margin-left:4px}
 
-/* Impostor: negro y rojo (se distingue también en modo oscuro) */
-[style*="--cb:#141414"]{background-image:linear-gradient(135deg,transparent 0 56%,#d0202f 56%)!important;box-shadow:inset 0 0 0 2px #d0202f}
-.gc[style*="--cb:#141414"]{background-image:linear-gradient(160deg,rgba(255,255,255,.12),transparent 40%),linear-gradient(135deg,transparent 0 62%,#d0202f 62%)!important}
+/* reborde de color en todas las tarjetas y botones de juego (el del Impostor, rojo) */
+.gc,.dots a,.gpick button.on,.top .ic,.gtog,.turn{--cbr:color-mix(in srgb,var(--cb) 55%,#fff)}
+[style*="--cb:#141414"]{--cbr:#d0202f}
+.gc{box-shadow:inset 0 0 0 2px var(--cbr),0 1px 2px rgba(0,0,0,.08),0 10px 20px -14px rgba(0,0,0,.5)}
+.dots a,.gpick button.on,.top .ic,.gtog{box-shadow:inset 0 0 0 2px var(--cbr)}
+.turn{box-shadow:inset 0 0 0 3px var(--cbr),0 14px 26px -16px rgba(0,0,0,.55)}
 
 /* local: reto VS y jugad juntos */
 .rvs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:12px}
