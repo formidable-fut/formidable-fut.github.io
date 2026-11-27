@@ -803,7 +803,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-e";
+const APP_V = "27.11-f";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -861,8 +861,8 @@ async function onlHost2(name){
     conn.seen=Date.now(); if(o.m.t==="ping") return;
     onlHostRecv(conn, o.m);
   });
-  client.on("offline", ()=>{ if(ONL&&ONL.client===client){ ONL.sig=false; if(location.hash==="#online-sala") route(); } });
-  client.on("connect", ()=>{ if(ONL&&ONL.client===client&&ONL.sig===false){ ONL.sig=true; if(location.hash==="#online-sala") route(); } });
+  client.on("offline", ()=>{ if(ONL&&ONL.client===client){ ONL.sig=false; if(location.hash==="#online-sala") onlineLobby(); } });
+  client.on("connect", ()=>{ if(ONL&&ONL.client===client&&ONL.sig===false){ ONL.sig=true; if(location.hash==="#online-sala") onlineLobby(); } });
   ONL.timer=setInterval(()=>{ if(!ONL) return; ONL.pub("/all",{t:"ping"}); const now=Date.now(); ONL.byGid.forEach(c=>{ if(c.open&&now-c.seen>30000) c.close(); }); }, 4000);
   onlKeepAwake(); location.hash="online-sala";
 }
@@ -1022,17 +1022,17 @@ function onlHandle(m, local){
   switch(m.t){
     case "welcome": if(Number.isInteger(m.you)) ONL.me=m.you; location.hash="online-sala"; break;
     case "lobby": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:Array.isArray(p.h)?p.h:[]})); if(m.cfg&&ONL.role==="guest"&&Array.isArray(m.cfg.games)) ONL.cfg={rounds:+m.cfg.rounds||5, games:m.cfg.games.filter(g=>GAMES.some(x=>x.id===g))};
-      if(ONL.role==="guest"&&location.hash==="#online-fin"){ ONL.r=-1; ONL.game=null; location.hash="online-sala"; } else if(location.hash==="#online-sala") route(); break;
+      if(ONL.role==="guest"&&location.hash==="#online-fin"){ ONL.r=-1; ONL.game=null; location.hash="online-sala"; } else if(location.hash==="#online-sala") onlineLobby(); break;
     case "round": {
       if(!Number.isInteger(m.r)||!GAMES.some(g=>g.id===m.game)) return;
       if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]}));
       clearInterval(ONL.nxT); ONL.r=m.r; ONL.rounds=m.rounds; ONL.game=m.game; ONL.over=false; sheetOff();
-      if(ONL.retired){ ONL.playing=false; if(location.hash==="#online-sala") route(); break; }
+      if(ONL.retired){ ONL.playing=false; if(location.hash==="#online-sala") onlineLobby(); break; }
       ONL.playing=true;
       if(DUEL.includes(m.game)){ location.hash="online-duelo"; if(location.hash==="#online-duelo") route(); }
       else { ONL_SEED=m.seed>>>0; if(location.hash.slice(1)===m.game) route(); else location.hash=m.game; }
       break; }
-    case "duel": if(m.d&&Array.isArray(m.d.left)){ ONL.duelState=m.d; if(location.hash==="#online-duelo") route(); } break;
+    case "duel": if(m.d&&Array.isArray(m.d.left)){ ONL.duelState=m.d; if(location.hash==="#online-duelo") onlineDuel(); } break;
     case "end": {
       if(m.r!==ONL.r) return; ONL.playing=false; ONL.over=true; onlBarOff();
       if(GAME.reveal && location.hash.slice(1)===ONL.game) GAME.reveal();
@@ -1052,7 +1052,7 @@ function onlHandle(m, local){
     case "final": clearInterval(ONL.nxT); ONL.retired=false; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
     case "solved": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${esc(ONL.players[m.by].n)} lo ha adivinado en ${+m.n} intento${+m.n===1?"":"s"}. ${ONL.playing?"¡Iguálalo!":""}`); break;
     case "pause": { const g=document.getElementById("gcd"); if(g){ clearInterval(ONL.nxT); g.textContent="En pausa: el anfitrión pasará de ronda"; } break; }
-    case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") route(); else location.hash="online-sala"; break;
+    case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") onlineLobby(); else location.hash="online-sala"; break;
     case "closed": if(!local) onlLeave(typeof m.why==="string"?m.why.slice(0,80):"El anfitrión ha cerrado la sala."); break;
   }
 }
