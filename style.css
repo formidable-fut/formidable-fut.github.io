@@ -580,3 +580,15 @@ body.inonl #give{display:none!important}
 /* Impostor: negro y rojo (se distingue también en modo oscuro) */
 [style*="--cb:#141414"]{background-image:linear-gradient(135deg,transparent 0 56%,#d0202f 56%)!important;box-shadow:inset 0 0 0 2px #d0202f}
 .gc[style*="--cb:#141414"]{background-image:linear-gradient(160deg,rgba(255,255,255,.12),transparent 40%),linear-gradient(135deg,transparent 0 62%,#d0202f 62%)!important}
+
+/* local: reto VS y jugad juntos */
+.rvs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-top:12px}
+.rvc{background:var(--card);border-radius:16px;padding:9px 11px;opacity:.65;box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.rvc.on{opacity:1;box-shadow:0 0 0 3px var(--ink)}
+.rvc b{display:block;font:400 16px var(--hf);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rvc span{font:400 24px var(--hf)}
+.rvc span small{font-size:13px;color:var(--mute)}
+.rvc>small{font:400 12px var(--meta);color:var(--mute)}
+.rvc .dbar{margin:4px 0}
+.rvc .dbar i{background:var(--ink)}
+.gtog{display:inline-block;border-radius:30px;padding:9px 14px;font:600 14px var(--ui);background:var(--cb);color:var(--cf);text-decoration:none}

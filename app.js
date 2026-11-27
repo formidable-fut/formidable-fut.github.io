@@ -655,7 +655,9 @@ let PARTY = store.get("party", null);
 if(PARTY && !PARTY.v2) PARTY = null;
 const saveParty = () => store.set("party", PARTY);
 const partyOn = () => PARTY && PARTY.active;
-const curGame = () => GAMES.find(g=>g.id===PARTY.order[PARTY.r]);
+const LRETO = ["reto-1000","reto-2000","reto-3000","reto-4000"];
+const partyGame = id => { if(LRETO.includes(id)){ const g=GAMES.find(x=>x.id==="reto-1000"); const t=LEVELS_1000[LRETO.indexOf(id)].t; return {...g, id, kit:"reto-1000", t:"Reto "+t, s:"Por turnos · gana quien lo supere con más goles"}; } const g=GAMES.find(x=>x.id===id); return g?{...g, kit:id}:null; };
+const curGame = () => partyGame(PARTY.order[PARTY.r]);
 const sheetOff = () => { const s=document.getElementById("sheet"); if(s) s.remove(); document.body.classList.remove("pdone"); };
 const armNext = () => {
   const b=document.getElementById("shgo"); if(!b) return; clearInterval(window.LNX); let left=5;
@@ -669,7 +671,7 @@ const nextRound = () => { clearInterval(window.LNX); sheetOff(); PARTY.r++; PART
 const showSheet = (cls, html) => { sheetOff(); document.body.classList.add("pdone"); const d=document.createElement("div"); d.id="sheet"; d.className="sheet "+cls; d.innerHTML=`<div class="sh-bg"></div><div class="sh-in">${html}</div>`; document.body.appendChild(d); return d; };
 const award = (idxs) => { idxs.forEach(i=>{ PARTY.players[i].s++; }); PARTY.players.forEach((p,i)=>p.h.push(idxs.includes(i)?1:0)); saveParty(); };
 const partyResult = (id, win) => {
-  if(!partyOn() || !PARTY.playing || id!==PARTY.order[PARTY.r]) return false;
+  if(!partyOn() || !PARTY.playing || id!==PARTY.order[PARTY.r] || LRETO.includes(id)) return false;
   PARTY.playing=false; saveParty();
   const last = PARTY.r===PARTY.rounds-1, nxt = last?"Ver clasificación":"Siguiente ronda";
   setTimeout(()=>{
@@ -701,8 +703,10 @@ function partySetup(){
       <h3 class="ph">A gritar <small>quien lo sepa lo grita y lo escribe</small></h3>
       <div class="gpick">${GAMES.filter(g=>SHOUT.includes(g.id)).map(chip).join("")}</div>
       <h3 class="ph">Duelo por turnos <small>todos a la vez, en pantalla dividida</small></h3>
-      <div class="gpick">${GAMES.filter(g=>DUEL.includes(g.id)).map(chip).join("")}</div>
-      <div class="row" style="margin-top:18px"><button class="btn" id="go" ${games.size?"":"disabled"}>Empezar partida</button></div>`;
+      <div class="gpick">${GAMES.filter(g=>DUEL.includes(g.id)).map(chip).join("")}${LRETO.map(id=>{ const g=partyGame(id); return `<button data-g="${id}" class="${games.has(id)?"on":""}" style="--cb:${CARD_KIT["reto-1000"][0]};--cf:${CARD_KIT["reto-1000"][1]}">${esc(g.t)}</button>`; }).join("")}</div>
+      <div class="row" style="margin-top:18px"><button class="btn" id="go" ${games.size?"":"disabled"}>Empezar partida</button></div>
+      <h3 class="ph">Jugad juntos <small>una partida normal de 1 jugador para resolverla en equipo, sin puntos</small></h3>
+      <div class="gpick">${["cuadricula","reto-1000","exacto","comparador"].map(id=>{ const g=GAMES.find(x=>x.id===id); return `<a class="gtog" href="#${id}" style="--cb:${CARD_KIT[id][0]};--cf:${CARD_KIT[id][1]}">${esc(g.t)} →</a>`; }).join("")}</div>`;
     bindBack();
     app.querySelectorAll(".pl input").forEach(el=>el.oninput=()=>{ names[+el.dataset.i]=el.value; });
     app.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>{ names.splice(+b.dataset.x,1); render(); });
@@ -724,18 +728,18 @@ function partyTurn(){
   sheetOff();
   if(!partyOn()){ location.hash="fiesta"; return; }
   if(PARTY.r>=PARTY.rounds){ location.hash="fiesta-fin"; return; }
-  const g=curGame(), [cb,cf]=CARD_KIT[g.id], duel=DUEL.includes(g.id);
+  const g=curGame(), [cb,cf]=CARD_KIT[g.kit], isReto=LRETO.includes(g.id), duel=DUEL.includes(g.id)||isReto;
   app.innerHTML = top("Multijugador", `Ronda <em>${PARTY.r+1}</em>/${PARTY.rounds}`) + `
     <div class="turn" style="--cb:${cb};--cf:${cf}">
       <p class="t-k">Ronda ${PARTY.r+1} · ${duel?"Duelo por turnos":"A gritar"}</p>
       <div class="t-g big"><svg viewBox="0 0 48 48" aria-hidden="true">${ICONS[g.ic]}</svg><div><b>${esc(g.t)}</b><small>${esc(g.s)}</small></div></div>
-      <p class="t-r">${duel?"Mismo número para todos. Por turnos, cada uno dice un jugador y se restan sus goles. Gana quien clave el 0 con menos jugadores.":"Mirad todos la pantalla. Quien lo sepa, que lo grite y lo escriba. Si es correcto, elegís quién se lleva el punto."}</p>
+      <p class="t-r">${isReto?"Cada uno tiene sus propios jugadores y casillas. Por turnos, colocad un jugador cada vez. Gana quien supere el objetivo; si lo superan varios, el que más goles sume.":duel?"Mismo número para todos. Por turnos, cada uno dice un jugador y se restan sus goles. Gana quien clave el 0 con menos jugadores.":"Mirad todos la pantalla. Quien lo sepa, que lo grite y lo escriba. Si es correcto, elegís quién se lleva el punto."}</p>
       <button class="btn t-go" id="go">¡Vamos!</button>
     </div>
     <ol class="mini-rank">${PARTY.players.map(p=>`<li><span>${esc(p.n)}</span><b>${p.s}</b></li>`).join("")}</ol>
     <div class="row" style="margin-top:14px"><button class="btn ghost" id="quit">Terminar partida</button></div>`;
   bindBack();
-  on("go",()=>{ PARTY.playing=true; saveParty(); location.hash = duel ? "fiesta-duelo" : g.id; });
+  on("go",()=>{ PARTY.playing=true; saveParty(); location.hash = isReto ? "fiesta-reto" : duel ? "fiesta-duelo" : g.id; });
   on("quit",()=>{ location.hash="fiesta-fin"; });
 }
 function partyDuel(){
@@ -783,6 +787,46 @@ function partyDuel(){
   };
   render();
 }
+function partyReto(){
+  sheetOff();
+  const id=partyOn()&&PARTY.order[PARTY.r]; if(!id||!LRETO.includes(id)){ location.hash=partyOn()?"fiesta-turno":"fiesta"; return; }
+  const L=LEVELS_1000[LRETO.indexOf(id)], n=PARTY.players.length, [cb,cf]=CARD_KIT["reto-1000"];
+  const ps=PARTY.players.map(()=>({pool:shuffle(P.map((p,i)=>i).filter(i=>P[i].g>=L.min)), fill:SLOTS.map(()=>null), total:0, k:0, cand:null, sel:null}));
+  let turn=0, over=false;
+  const deal = p => { if(!p.cand){ p.cand=p.pool.splice(0,L.k); p.sel=L.k===1?p.cand[0]:null; } };
+  const finish = () => {
+    over=true; render(); PARTY.playing=false;
+    const ok=ps.map((p,i)=>i).filter(i=>ps[i].total>=L.t); let w=[]; if(ok.length){ const mx=Math.max(...ok.map(i=>ps[i].total)); w=ok.filter(i=>ps[i].total===mx); }
+    award(w); const last=PARTY.r===PARTY.rounds-1;
+    showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?`Punto para ${w.map(i=>esc(PARTY.players[i].n)).join(" y ")}`:"Nadie llega al objetivo"}</b><small>${ps.map((p,i)=>`${esc(PARTY.players[i].n)} ${p.total}`).join(" · ")} (objetivo ${L.t})</small></div><button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"}</button>`);
+    document.getElementById("shgo").onclick=nextRound; armNext();
+  };
+  const render = anim => {
+    const p=ps[turn]; if(!over) deal(p);
+    app.innerHTML = top(`Reto ${L.t} · VS`, `Ronda <em>${PARTY.r+1}</em>/${PARTY.rounds}`) + `
+      <div class="rvs">${ps.map((q,i)=>`<div class="rvc ${i===turn&&!over?"on":""}"><b>${esc(PARTY.players[i].n)}</b><span>${q.total}<small>/${L.t}</small></span><div class="dbar"><i style="width:${Math.min(100,q.total/L.t*100)}%"></i></div><small>${q.k}/${SLOTS.length}</small></div>`).join("")}</div>
+      ${over?"":`<p class="dturn">Turno de <b>${esc(PARTY.players[turn].n)}</b> · jugador ${p.k+1} de ${SLOTS.length}</p>`}
+      <div class="board rb" style="--cb:${cb};--cf:${cf}"><div class="rtop">${!over&&L.k===1?`<div class="rp fresh"><div class="pname one" style="--full:${P[p.sel].n.length}">${esc(P[p.sel].n)}</div><div class="nat">${natTxt(P[p.sel].nat)} · ${POS[P[p.sel].pos]}</div></div>`:`<div class="rp"><p class="cap">${over?"Final":(p.sel==null?"Elige un jugador":"Elige casilla")}</p></div>`}
+        <div class="score"><span class="big" id="tot">${anim?anim.from:p.total}</span><span class="of">/${L.t}</span></div></div>
+        <div class="bar"><i style="width:${Math.min(100,p.total/L.t*100)}%"></i></div>
+        ${!over&&L.k>1?`<div class="opts" id="cand">${p.cand.map(i=>`<button class="opt ${p.sel===i?"ok":""}" data-i="${i}">${esc(P[i].n)}<small>${natTxt(P[i].nat)} · ${POS[P[i].pos]}</small></button>`).join("")}</div>`:""}</div>
+      <div class="opts" id="slots">${SLOTS.map((sl,j)=>{ const f=p.fill[j];
+        return f ? `<div class="opt sl sl-${sl.k} filled${f.v>0?"":" zero"}${f.n?" new":""}">${slotSym(sl.k)}<span class="st">${sl.t}</span><b>${f.v}</b><small>${esc(P[f.i].n.split(" ").slice(-1)[0])}</small></div>`
+          : `<button class="opt sl sl-${sl.k}" data-j="${j}" ${over||p.sel==null?"disabled":""}>${slotSym(sl.k)}<span class="st">${sl.t}</span></button>`; }).join("")}</div>
+      ${over?"":`<div class="row" style="margin-top:14px"><button class="btn ghost" id="give">Terminar reto</button></div>`}`;
+    bindBack();
+    app.querySelectorAll("#cand button").forEach(b=>b.onclick=()=>{ p.sel=+b.dataset.i; render(); });
+    app.querySelectorAll("#slots button").forEach(b=>b.onclick=()=>{
+      if(p.sel==null||over) return; const j=+b.dataset.j, i=p.sel, v=slotVal(P[i],SLOTS[j].k), from=p.total;
+      p.fill.forEach(f=>f&&(f.n=false)); p.fill[j]={i,v,n:true}; p.total+=v; p.k++; p.cand=null; p.sel=null;
+      if(ps.every(q=>q.k>=SLOTS.length)) return finish();
+      const cur=turn; let nx=turn; for(let k=0;k<n;k++){ nx=(nx+1)%n; if(ps[nx].k<SLOTS.length) break; }
+      turn=nx; render(nx===cur?{from}:null); if(nx===cur) countUp(document.getElementById("tot"), from, p.total);
+    });
+    on("give", finish);
+  };
+  render();
+}
 function partyEnd(){
   sheetOff();
   if(!PARTY){ location.hash=""; return; }
@@ -813,7 +857,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-h";
+const APP_V = "27.11-i";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -1327,7 +1371,7 @@ function onlineEnd(){
   on("again",()=>{ ONL.started=false; ONL.r=-1; ONL.round=null; ONL.duel=null; ONL.players.forEach(p=>{p.s=0;p.h=[];}); onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg}); location.hash="online-sala"; });
 }
 
-const ROUTES = {"online-coop":onlineCoop, online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
+const ROUTES = {"online-coop":onlineCoop, online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-reto":partyReto, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
 const route = () => { const h=location.hash.slice(1); GAME={}; const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); const inO=!!(ONL&&((h===ONL.game&&(ONL.playing||ONL.over))||h==="online-duelo"||h==="online-coop")); document.body.classList.toggle("inonl", inO); if(!inO&&typeof onlBarOff==="function") onlBarOff(); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
 
 fetch("data.json",{cache:"no-cache"}).then(r=>r.json()).then(d=>{
