@@ -638,7 +638,15 @@ body.inonl #give{display:none!important}
 #slots button.opt.sl .st{color:var(--ink)}
 #slots button.opt.sl svg.sy{stroke:var(--ink);opacity:.18}
 #slots button.opt.sl span.sy{opacity:.4}
-#slots div.opt.sl,#slots div.opt.sl b{color:#fff}
+#slots div.opt.sl{background:var(--card)!important;color:var(--ink)!important;box-shadow:inset 0 0 0 2px var(--ok)}
+#slots div.opt.sl.zero{box-shadow:inset 0 0 0 2px var(--bad)}
+#slots div.opt.sl .st,#slots div.opt.sl b{color:var(--ink)!important}
+#slots div.opt.sl small{color:var(--mute)!important}
+#slots div.opt.sl svg.sy{stroke:var(--ink);opacity:.18}
+#slots div.opt.sl span.sy{opacity:.4}
+#slots div.opt.sl::after,#slots button.opt.sl::after{display:none}
+#slots div.opt.sl.filled::before{background:var(--ok);color:#fff}
+#slots div.opt.sl.zero::before{background:var(--bad);color:#fff}
 
 .board .photo .cnum{color:#111}
 .wrap[data-game=pistas] .board .cl6 li.hid{color:var(--mute);box-shadow:inset 0 0 0 1px var(--line)}
