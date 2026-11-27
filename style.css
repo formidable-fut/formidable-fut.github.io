@@ -607,3 +607,11 @@ body.inonl #give{display:none!important}
 .wflag{width:1.1em;height:1.1em;vertical-align:-.15em;margin-right:4px}
 #otoast.flagt{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 2px var(--bad),0 10px 24px -10px rgba(0,0,0,.5)}
 #otoast.flagt .wflag{width:26px;height:26px;color:var(--bad);margin:0}
+
+/* resumen del rival: símbolo de la categoría detrás de su nombre */
+.rvl li{position:relative;overflow:hidden;background:var(--soft)!important}
+.rvl li>*:not(.sy){position:relative;z-index:1}
+.rvl li .sy{position:absolute;left:-4px;top:50%;width:34px;height:34px;transform:translateY(-50%) rotate(-14deg);opacity:.22;z-index:0;pointer-events:none}
+.rvl li svg.sy{fill:none;stroke:var(--ink);stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+.rvl li span.sy{width:auto;height:auto;font-size:26px;line-height:1;opacity:.35}
+.rvl li .rc{padding-left:16px}

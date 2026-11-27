@@ -860,7 +860,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-o";
+const APP_V = "27.11-p";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -1224,7 +1224,7 @@ function onlRivals(){
   box.innerHTML = `<h3 class="ph">Rivales</h3>` + (others.length? others.map(i=>{ const p=ONL.prog[i], n=esc(ONL.players[i].n);
     if(ONL.kind==="cvs") return `<div class="rv"><div class="rvh"><b>${n}</b><span>${p.filled}/9 · ${p.left} intentos${p.done?" · terminado":""}</span></div><div class="dbar"><i style="width:${p.filled/9*100}%"></i></div></div>`;
     return `<div class="rv"><div class="rvh"><b>${n}</b><span>${p.total}/${L.t}${p.done?" · terminado":""}</span></div><div class="dbar"><i style="width:${Math.min(100,p.total/L.t*100)}%"></i></div>
-      <ol class="rvl">${(p.picks||[]).map(x=>`<li><span>${esc(x[1])}</span><span>${esc(x[0])}</span><b>${+x[2]}</b></li>`).join("")}</ol></div>`; }).join("") : `<p class="wait">Aún no han jugado.</p>`);
+      <ol class="rvl">${(p.picks||[]).map(x=>{ const sl=SLOTS.find(z=>z.t===x[1]); return `<li class="${sl?"sl-"+sl.k:""}">${sl?slotSym(sl.k):""}<span class="rc">${esc(x[1])}</span><span>${esc(x[0])}</span><b>${+x[2]}</b></li>`; }).join("")}</ol></div>`; }).join("") : `<p class="wait">Aún no han jugado.</p>`);
 }
 /* ---- Cuadrícula cooperativa (Coop y Coop VS) ---- */
 function onlineCoop(){
