@@ -508,3 +508,10 @@ body.pdone #give, body.pdone #srch, body.pdone #next{display:none}
 .wait{color:var(--mute);font-size:14px;margin:6px 2px;flex:1}
 .gpick button:disabled{cursor:default}
 .sh-in .wait{grid-column:1/-1;text-align:center}
+
+.mpbtn{display:flex;align-items:center;gap:10px;width:100%;margin-top:14px;padding:11px 14px;border:0;border-radius:18px;background:var(--ink);color:var(--bg);font:400 18px var(--hf);text-transform:uppercase;letter-spacing:.01em;text-align:left;box-shadow:0 8px 18px -12px rgba(0,0,0,.6)}
+.mpbtn svg{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mpbtn span{font:400 13px var(--meta);opacity:.65;margin-left:auto}
+.mpbtn .dn2{width:18px;height:18px;margin-left:4px}
+.mpbtn:active{transform:scale(.98)}
+#amigos{scroll-margin-top:12px}

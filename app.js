@@ -146,7 +146,7 @@ const SUN='<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-wid
 const MOON='<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.5 12.6A7 7 0 0 1 7.4 3.5a7 7 0 1 0 9.1 9.1z"/></svg>';
 const theme = () => document.documentElement.dataset.theme;
 const modeBtn = () => `<button class="mode" id="mode" aria-label="Cambiar modo día/noche">${theme()==="dark"?SUN+"Día":MOON+"Noche"}</button>`;
-document.addEventListener("click", e => { const b=e.target.closest&&e.target.closest("#mode"); if(!b) return; const t=theme()==="dark"?"light":"dark"; document.documentElement.dataset.theme=t; store.set("theme",t); b.outerHTML=modeBtn(); });
+document.addEventListener("click", e => { const m=e.target.closest&&e.target.closest("#tomp"); if(m){ const t=document.getElementById("amigos"); if(t) t.scrollIntoView({behavior:"smooth",block:"start"}); return; } const b=e.target.closest&&e.target.closest("#mode"); if(!b) return; const t=theme()==="dark"?"light":"dark"; document.documentElement.dataset.theme=t; store.set("theme",t); b.outerHTML=modeBtn(); });
 function home(){
   const arr='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M10 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const card=(g,k)=>{ const [cb,cf,tg]=CARD_KIT[g.id], st=store.get("streak:"+g.id,0);
@@ -156,10 +156,11 @@ function home(){
     <div class="row"><span>Minijuegos de fútbol · 25/26</span>${modeBtn()}</div>
     <h1 class="fit fill"><span class="fit-in">Formidable<i></i></span></h1>
     <nav class="dots" aria-label="Ir a un juego">${GAMES.map(g=>`<a href="#${g.id}" aria-label="${esc(g.t)}" style="--cb:${CARD_KIT[g.id][0]};--cf:${CARD_KIT[g.id][1]}"><svg viewBox="0 0 48 48">${ICONS[g.ic]}</svg></a>`).join("")}</nav>
+    <button class="mpbtn" id="tomp"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M14.5 14.6c.8-.4 1.6-.6 2.5-.6 2.4 0 4.1 1.4 4.6 4"/></svg>Jugar con amigos<span>Online · Local</span><svg class="dn2" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M5 11l5 5 5-5"/></svg></button>
   </header>
   <div class="sec"><h2>Juegos</h2><span>Elige y juega</span></div>
   <section class="cards">${GAMES.map(card).join("")}</section>
-  <div class="sec"><h2>Con amigos</h2><span>Un solo móvil</span></div>
+  <div class="sec" id="amigos"><h2>Multijugador</h2><span>Online o en local</span></div>
   ${partyOn()&&PARTY.r<PARTY.rounds?`<a class="mp cont" href="#fiesta-turno"><span class="mp-ic">▶</span><span><b>Continuar partida</b><small>Ronda ${PARTY.r+1}/${PARTY.rounds} · ${esc(curGame().t)}</small></span></a>`:""}
   ${ONL?`<a class="mp cont" href="#online-sala"><span class="mp-ic">▶</span><span><b>Volver a la sala</b><small>Código ${esc(ONL.code)}</small></span></a>`:""}
   <a class="mp onl" href="#online"><span class="mp-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 3.8 5.8 3.8 9s-1.2 6.2-3.8 9c-2.6-2.8-3.8-5.8-3.8-9S9.4 5.8 12 3z"/></svg></span><span><b>Online</b><small>Cada uno en su móvil · sala con código</small></span><svg class="mp-ar" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11M10 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
