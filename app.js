@@ -793,7 +793,7 @@ function partyReto(){
   const id=partyOn()&&PARTY.order[PARTY.r]; if(!id||!LRETO.includes(id)){ location.hash=partyOn()?"fiesta-turno":"fiesta"; return; }
   const L=LEVELS_1000[LRETO.indexOf(id)], n=PARTY.players.length, [cb,cf]=CARD_KIT["reto-1000"];
   const ps=PARTY.players.map(()=>({pool:shuffle(P.map((p,i)=>i).filter(i=>P[i].g>=L.min)), fill:SLOTS.map(()=>null), total:0, k:0, cand:null, sel:null}));
-  let turn=0, over=false;
+  let turn=0, over=false, lock="";
   const deal = p => { if(!p.cand){ p.cand=p.pool.splice(0,L.k); p.sel=L.k===1?p.cand[0]:null; } };
   const finish = () => {
     over=true; render(); PARTY.playing=false;
@@ -803,26 +803,28 @@ function partyReto(){
     document.getElementById("shgo").onclick=nextRound; armNext();
   };
   const render = anim => {
-    const p=ps[turn]; if(!over) deal(p);
+    const p=ps[turn]; if(!over&&!lock) deal(p);
     app.innerHTML = top(`Reto ${L.t} · VS`, `Ronda <em>${PARTY.r+1}</em>/${PARTY.rounds}`) + `
       <div class="rvs">${ps.map((q,i)=>`<div class="rvc ${i===turn&&!over?"on":""}"><b>${esc(PARTY.players[i].n)}</b><span>${q.total}<small>/${L.t}</small></span><div class="dbar"><i style="width:${Math.min(100,q.total/L.t*100)}%"></i></div><small>${q.k}/${SLOTS.length}</small></div>`).join("")}</div>
-      ${over?"":`<p class="dturn">Turno de <b>${esc(PARTY.players[turn].n)}</b> · jugador ${p.k+1} de ${SLOTS.length}</p>`}
-      <div class="board rb" style="--cb:${cb};--cf:${cf}"><div class="rtop">${!over&&L.k===1?`<div class="rp fresh"><div class="pname one" style="--full:${P[p.sel].n.length}">${esc(P[p.sel].n)}</div><div class="nat">${natTxt(P[p.sel].nat)} · ${POS[P[p.sel].pos]}</div></div>`:`<div class="rp"><p class="cap">${over?"Final":(p.sel==null?"Elige un jugador":"Elige casilla")}</p></div>`}
+      ${over?"":lock?`<p class="dturn"><b>${esc(lock)}</b></p>`:`<p class="dturn">Turno de <b>${esc(PARTY.players[turn].n)}</b> · jugador ${p.k+1} de ${SLOTS.length}</p>`}
+      <div class="board rb" style="--cb:${cb};--cf:${cf}"><div class="rtop">${!over&&!lock&&L.k===1?`<div class="rp fresh"><div class="pname one" style="--full:${P[p.sel].n.length}">${esc(P[p.sel].n)}</div><div class="nat">${natTxt(P[p.sel].nat)} · ${POS[P[p.sel].pos]}</div></div>`:`<div class="rp"><p class="cap">${over?"Final":lock?esc(PARTY.players[turn].n):(p.sel==null?"Elige un jugador":"Elige casilla")}</p></div>`}
         <div class="score"><span class="big" id="tot">${anim?anim.from:p.total}</span><span class="of">/${L.t}</span></div></div>
         <div class="bar"><i style="width:${Math.min(100,p.total/L.t*100)}%"></i></div>
-        ${!over&&L.k>1?`<div class="opts" id="cand">${p.cand.map(i=>`<button class="opt ${p.sel===i?"ok":""}" data-i="${i}">${esc(P[i].n)}<small>${natTxt(P[i].nat)} · ${POS[P[i].pos]}</small></button>`).join("")}</div>`:""}</div>
+        ${!over&&!lock&&L.k>1?`<div class="opts" id="cand">${p.cand.map(i=>`<button class="opt ${p.sel===i?"ok":""}" data-i="${i}">${esc(P[i].n)}<small>${natTxt(P[i].nat)} · ${POS[P[i].pos]}</small></button>`).join("")}</div>`:""}</div>
       <div class="opts" id="slots">${SLOTS.map((sl,j)=>{ const f=p.fill[j];
         return f ? `<div class="opt sl sl-${sl.k} filled${f.v>0?"":" zero"}${f.n?" new":""}">${slotSym(sl.k)}<span class="st">${sl.t}</span><b>${f.v}</b><small>${esc(P[f.i].n.split(" ").slice(-1)[0])}</small></div>`
-          : `<button class="opt sl sl-${sl.k}" data-j="${j}" ${over||p.sel==null?"disabled":""}>${slotSym(sl.k)}<span class="st">${sl.t}</span></button>`; }).join("")}</div>
+          : `<button class="opt sl sl-${sl.k}" data-j="${j}" ${over||lock||p.sel==null?"disabled":""}>${slotSym(sl.k)}<span class="st">${sl.t}</span></button>`; }).join("")}</div>
       ${over?"":`<div class="row" style="margin-top:14px"><button class="btn ghost" id="give">Terminar reto</button></div>`}`;
     bindBack();
     app.querySelectorAll("#cand button").forEach(b=>b.onclick=()=>{ p.sel=+b.dataset.i; render(); });
     app.querySelectorAll("#slots button").forEach(b=>b.onclick=()=>{
-      if(p.sel==null||over) return; const j=+b.dataset.j, i=p.sel, v=slotVal(P[i],SLOTS[j].k), from=p.total;
+      if(p.sel==null||over||lock) return; const j=+b.dataset.j, i=p.sel, v=slotVal(P[i],SLOTS[j].k), from=p.total;
       p.fill.forEach(f=>f&&(f.n=false)); p.fill[j]={i,v,n:true}; p.total+=v; p.k++; p.cand=null; p.sel=null;
-      if(ps.every(q=>q.k>=SLOTS.length)) return finish();
-      const cur=turn; let nx=turn; for(let k=0;k<n;k++){ nx=(nx+1)%n; if(ps[nx].k<SLOTS.length) break; }
-      turn=nx; render(nx===cur?{from}:null); if(nx===cur) countUp(document.getElementById("tot"), from, p.total);
+      const all=ps.every(q=>q.k>=SLOTS.length);
+      let nx=turn; if(!all) for(let k=0;k<n;k++){ nx=(nx+1)%n; if(ps[nx].k<SLOTS.length) break; }
+      lock = all ? "Fin del reto…" : (nx===turn ? "" : `Pasando a ${PARTY.players[nx].n}…`);
+      render({from}); countUp(document.getElementById("tot"), from, p.total);
+      setTimeout(()=>{ lock=""; if(all) return finish(); turn=nx; render(); }, 2000);
     });
     on("give", finish);
   };
@@ -858,7 +860,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-l";
+const APP_V = "27.11-m";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
