@@ -139,8 +139,9 @@ h1,h2,h3{font-family:var(--hf);font-weight:400;text-transform:uppercase;line-hei
 .dots svg{width:56%;height:56%;fill:none;stroke:currentColor;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
 .dots svg .a{fill:currentColor}
 @media(min-width:900px){.dots{max-width:520px}}
-/* punto de FORMIDABLE: punto dorado liso (v1). El balón se probó y se descartó. */
-.hero h1 .fit-in i{display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--gold);margin-left:.05em;vertical-align:baseline}
+/* punto de FORMIDABLE: balón (dorado, pentágono negro y líneas desde cada vértice). Punto liso guardado: clase "v1" en el h1 */
+.hero h1 .fit-in i{display:inline-block;width:.24em;height:.24em;border-radius:50%;background:var(--gold) url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2248%22%20fill%3D%22%23e2a704%22/%3E%3Cpath%20d%3D%22M50%2032L50.0%201.8M67%2044L95.5%2032.6M60.5%2064L80.5%2089.1M39.5%2064L19.5%2089.1M33%2044L4.5%2032.6%22%20stroke%3D%22%23111%22%20stroke-width%3D%225%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M50%2032l17%2012-6.5%2020h-21L33%2044z%22%20fill%3D%22%23111%22/%3E%3C/svg%3E") center/100% no-repeat;margin-left:.05em;vertical-align:baseline}
+.hero h1.v1 .fit-in i{width:.2em;height:.2em;background:var(--gold)}
 .hero h1.v1 .fit-in i{width:.2em;height:.2em;background:var(--gold)}
 
 .sec{display:flex;justify-content:space-between;align-items:baseline;margin:22px 2px 12px}
