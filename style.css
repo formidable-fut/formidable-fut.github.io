@@ -515,3 +515,7 @@ body.pdone #give, body.pdone #srch, body.pdone #next{display:none}
 .mpbtn .dn2{width:18px;height:18px;margin-left:4px}
 .mpbtn:active{transform:scale(.98)}
 #amigos{scroll-margin-top:12px}
+
+.sig{margin:8px 0 0;font-size:13px;color:var(--ok)}
+.sig::before{content:"● "}
+.sig.off{color:var(--near)}

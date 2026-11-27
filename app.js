@@ -800,8 +800,10 @@ function onlHost(name){
   const code=mkCode();
   ONL={role:"host", code, me:0, players:[{n:name, s:0, on:true, h:[]}], conns:new Map(), cfg:store.get("onl-cfg",{rounds:5, games:[...SHOUT,...DUEL]}), r:-1, started:false, rate:new Map()};
   const peer = new Peer(ONL_PREFIX+code.toLowerCase(), peerOpts()); ONL.peer=peer;
-  peer.on("open", ()=>{ location.hash="online-sala"; route(); });
-  peer.on("error", e=>{ if(e && e.type==="unavailable-id") { onlLeave("Ese código ya está en uso, prueba otra vez."); } else if(!ONL||!ONL.started) onlLeave("No se pudo crear la sala ("+(e&&e.type||"error")+")."); });
+  peer.on("open", ()=>{ ONL.sig=true; onlKeepAwake(); if(location.hash!=="#online-sala"&&!ONL.started) location.hash="online-sala"; else if(location.hash==="#online-sala") route(); });
+  peer.on("disconnected", ()=>{ if(!ONL||ONL.peer!==peer||peer.destroyed) return; ONL.sig=false; if(location.hash==="#online-sala") route(); setTimeout(()=>{ try{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); }catch(e){} }, 800); });
+  peer.on("error", e=>{ if(e && (e.type==="network"||e.type==="server-error"||e.type==="socket-error"||e.type==="socket-closed")) { setTimeout(()=>{ try{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); }catch(x){} }, 2000); return; }
+    if(e && e.type==="unavailable-id") { onlLeave("Ese código ya está en uso, prueba otra vez."); } else if(!ONL||!ONL.started) onlLeave("No se pudo crear la sala ("+(e&&e.type||"error")+")."); });
   peer.on("connection", conn=>{
     conn.on("open", ()=>{ if(!ONL) return conn.close(); });
     conn.on("data", raw=>onlHostRecv(conn, raw));
@@ -887,15 +889,24 @@ function onlJoin(name, code){
   if(code.length!==6) return alertMsg("El código tiene 6 caracteres.");
   ONL={role:"guest", code, me:null, players:[], cfg:null, r:-1};
   const peer=new Peer(peerOpts()); ONL.peer=peer;
-  const fail=setTimeout(()=>{ if(ONL&&ONL.me==null) onlLeave("No se encuentra la sala "+code+"."); }, 12000);
-  peer.on("open", ()=>{
-    const conn=peer.connect(ONL_PREFIX+code.toLowerCase(), {reliable:true, serialization:"json"}); ONL.conn=conn;
+  const fail=setTimeout(()=>{ if(ONL&&ONL.me==null) onlLeave("No encuentro la sala "+code+". Comprueba el código y que el móvil del anfitrión tenga la sala abierta en pantalla."); }, 20000);
+  const wire = conn => {
     conn.on("open", ()=>onlSend(conn,{t:"hello", name, sig:DATA_SIG()}));
     conn.on("data", m=>{ if(m&&m.t==="welcome") clearTimeout(fail); onlHandle(m,false); });
-    conn.on("close", ()=>{ if(ONL&&ONL.role==="guest") onlLeave("Se ha cerrado la sala."); });
+    conn.on("close", ()=>{ if(ONL&&ONL.role==="guest"&&ONL.conn===conn&&ONL.me!=null) onlLeave("Se ha cerrado la sala."); });
+  };
+  peer.on("open", ()=>{ onlKeepAwake(); const conn=peer.connect(ONL_PREFIX+code.toLowerCase(), {reliable:true, serialization:"json"}); ONL.conn=conn; wire(conn); });
+  peer.on("disconnected", ()=>{ setTimeout(()=>{ try{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); }catch(e){} }, 800); });
+  let tries=0;
+  peer.on("error", e=>{
+    if(!ONL||ONL.role!=="guest") return;
+    if(e&&e.type==="peer-unavailable"&&ONL.me==null&&++tries<6){ setTimeout(()=>{ if(!ONL||ONL.me!=null) return; const c=peer.connect(ONL_PREFIX+code.toLowerCase(), {reliable:true, serialization:"json"}); ONL.conn=c; wire(c); }, 2500); return; }
+    clearTimeout(fail); onlLeave(e&&e.type==="peer-unavailable"?"No encuentro la sala "+code+". Comprueba el código y que el móvil del anfitrión tenga la sala abierta en pantalla.":"Error de conexión.");
   });
-  peer.on("error", e=>{ clearTimeout(fail); if(ONL&&ONL.role==="guest") onlLeave(e&&e.type==="peer-unavailable"?"No existe la sala "+code+".":"Error de conexión."); });
 }
+let WAKE=null;
+const onlKeepAwake = async () => { try{ if(navigator.wakeLock&&!WAKE){ WAKE=await navigator.wakeLock.request("screen"); WAKE.addEventListener("release",()=>{ WAKE=null; }); } }catch(e){} };
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState!=="visible"||!ONL) return; onlKeepAwake(); try{ if(ONL.peer&&ONL.peer.disconnected&&!ONL.peer.destroyed) ONL.peer.reconnect(); }catch(e){} });
 const alertMsg = t => { store.set("onl-msg", t); route(); };
 /* ---- lo que ven todos (también el anfitrión, en local) ---- */
 function onlHandle(m, local){
@@ -964,6 +975,7 @@ function onlineLobby(){
   const chip=g=>`<button data-g="${g.id}" class="${cfg.games.includes(g.id)?"on":""}" ${host?"":"disabled"} style="--cb:${CARD_KIT[g.id][0]};--cf:${CARD_KIT[g.id][1]}">${esc(g.t)}</button>`;
   app.innerHTML = top("Sala online", "") + `
     <div class="code"><p class="t-k">Código de sala</p><div class="cv2">${esc(ONL.code)}</div>
+      ${host?`<p class="sig ${ONL.sig===false?"off":""}">${ONL.sig===false?"Reconectando… vuelve a esta pantalla":"Sala abierta · deja esta pantalla abierta mientras se unen"}</p>`:""}
       <div class="row" style="justify-content:center;gap:8px;margin-top:10px"><button class="btn ghost" id="copy">Copiar enlace</button>${navigator.share?`<button class="btn ghost" id="share">Compartir</button>`:""}</div></div>
     <h3 class="ph">Jugadores <small>${ONL.players.filter(p=>p.on).length}/8</small></h3>
     <ol class="mini-rank">${ONL.players.map((p,i)=>`<li class="${i===ONL.me?"me":""} ${p.on?"":"off"}"><span>${esc(p.n)}${i===0?" ★":""}</span><b>${p.on?"●":"○"}</b></li>`).join("")}</ol>
