@@ -860,7 +860,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-q";
+const APP_V = "27.11-r";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -1226,6 +1226,12 @@ function onlRivals(){
     return `<div class="rv"><div class="rvh"><b>${n}</b><span>${p.total}/${L.t}${p.done?" · terminado":""}</span></div><div class="dbar"><i style="width:${Math.min(100,p.total/L.t*100)}%"></i></div>
       <ol class="rvl">${(p.picks||[]).map(x=>{ const sl=SLOTS.find(z=>z.t===x[1]); return `<li class="${sl?"sl-"+sl.k:""}">${sl?slotSym(sl.k):""}<span class="rc">${esc(x[1])}</span><span>${esc(x[0])}</span><b>${+x[2]}</b></li>`; }).join("")}</ol></div>`; }).join("") : `<p class="wait">Aún no han jugado.</p>`);
 }
+/* ---- modo de cuadrícula online: cartel arriba y reborde propio ---- */
+const CMODE = {
+  cvs:{cls:"m-vs", t:"VS", d:"Cada uno su cuadrícula · gana quien la complete antes", ic:'<path d="M4 4l7 7M20 4l-7 7M8 14l-4 4 2 2 4-4M16 14l4 4-2 2-4-4M9 13l2-2M15 13l-2-2"/>'},
+  coop:{cls:"m-coop", t:"COOP", d:"La misma cuadrícula entre todos · si la completáis, punto para cada uno", ic:'<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20c.5-3.5 3-5.5 6-5.5s4 1 4 1 1-1 4-1 5.5 2 6 5.5"/>'},
+  coopvs:{cls:"m-coopvs", t:"COOP VS", d:"La misma cuadrícula entre todos · puntúa quien más casillas rellene", ic:'<circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20c.5-3.5 3-5.5 6-5.5M22 20c-.5-3.5-3-5.5-6-5.5M10 17l4 4M14 17l-4 4"/>'}};
+const cmodeBanner = k => { const m=CMODE[k]; return m?`<div class="modeb ${m.cls}"><svg viewBox="0 0 24 24" aria-hidden="true">${m.ic}</svg><div><b>Modo ${m.t}</b><small>${m.d}</small></div></div>`:""; };
 /* ---- Cuadrícula cooperativa (Coop y Coop VS) ---- */
 function onlineCoop(){
   if(!ONL){ location.hash="online"; return; }
@@ -1236,8 +1242,9 @@ function onlineCoop(){
   const selBy={}; Object.entries(c.sel||{}).forEach(([i,k])=>{ if(+i!==ONL.me) (selBy[k]=selBy[k]||[]).push(+i); });
   const cnt={}; c.cells.forEach(x=>{ if(x) cnt[x.by]=(cnt[x.by]||0)+1; });
   app.innerHTML = top(vs?"Cuadrícula · Coop VS":"Cuadrícula · Coop", `Ronda <em>${ONL.r+1}</em>/${ONL.rounds}`) + `
-    <p class="rule">${vs?"Rellenáis la misma cuadrícula, pero <b>puntúa quien más casillas rellene</b>.":"Rellenad juntos la cuadrícula. Si la completáis, <b>punto para todos</b>."} Ves en directo la casilla que ha elegido tu compañero.</p>
-    <div class="xg coop">
+    ${cmodeBanner(ONL.kind)}
+    <p class="rule">Ves en directo la casilla que ha elegido tu compañero (marco naranja con su nombre).</p>
+    <div class="xg coop ${CMODE[ONL.kind].cls}">
       <div class="xh xc"><b>${c.left}</b><small>intentos</small></div>
       ${g.cols.map(x=>`<div class="xh">${x.h}</div>`).join("")}
       ${g.rows.map((r,ri)=>`<div class="xh">${r.h}</div>`+g.cols.map((cc,ci)=>{ const k=ri*3+ci, v=c.cells[k];
@@ -1304,7 +1311,7 @@ function onlGaveBadge(){
   b.innerHTML=FLAG_SVG+`<span>${list.map(i=>esc(ONL.players[i].n)).join(", ")} ${list.length>1?"se han rendido":"se ha rendido"}</span>`;
 }
 function onlToast(html, cls){ let t=document.getElementById("otoast"); if(t) t.remove(); t=document.createElement("div"); t.id="otoast"; if(cls) t.className=cls; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); }, 4500); }
-function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ["duel","coop","coopvs"].includes(ONL.kind)) return; if(ONL && ONL.playing && h===ONL.game){ const tm=ONL.kind!=="reto"; onlBarOn(tm); if(tm) onlTimerReset(); else clearInterval(OT.iv); } if(ONL && h===ONL.game && (ONL.kind==="reto"||ONL.kind==="cvs")) setTimeout(onlRivals,0); }
+function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ONL.kind==="cvs" && h==="cuadricula" && ONL.r>=0){ const xg=app.querySelector(".xg"); if(xg&&!app.querySelector(".modeb")){ xg.classList.add("m-vs"); const t=app.querySelector(".top"); if(t) t.insertAdjacentHTML("afterend", cmodeBanner("cvs")); } } if(ONL && ["duel","coop","coopvs"].includes(ONL.kind)) return; if(ONL && ONL.playing && h===ONL.game){ const tm=ONL.kind!=="reto"; onlBarOn(tm); if(tm) onlTimerReset(); else clearInterval(OT.iv); } if(ONL && h===ONL.game && (ONL.kind==="reto"||ONL.kind==="cvs")) setTimeout(onlRivals,0); }
 /* ---- pantallas ---- */
 function onlineHome(){
   sheetOff();
