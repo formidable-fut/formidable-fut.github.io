@@ -860,7 +860,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-s";
+const APP_V = "27.11-t";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -988,7 +988,7 @@ function onlNextRound(r){
     for(;;){ const k=3+Math.floor(rng()*3); tgt=sh(sc).slice(0,k).reduce((s,i)=>s+P[i].g,0); if(tgt>=300&&tgt<=1200) break; }
     const on=ONL.players.map(p=>p.on);
     const act0=ONL.players.map((p,i)=>onlActive(i));
-    ONL.duel={r, tgt, left:ONL.players.map(()=>tgt), tries:ONL.players.map(()=>[]), used:ONL.players.map(()=>[]), turn:-1, over:false, win:[], gave:ONL.players.map(p=>!!p.ret)};
+    ONL.duel={r, tgt, left:ONL.players.map(()=>tgt), tries:ONL.players.map(()=>[]), used:[], turn:-1, over:false, win:[], gave:ONL.players.map(p=>!!p.ret)};
     onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
     onlBroadcast({t:"duel", d:ONL.duel});
   } else onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
@@ -1083,9 +1083,8 @@ function onlDuelPick(i, r, pi){
   const d=ONL.duel; if(!d||d.over||r!==d.r||!onlActive(i)||d.gave[i]||d.left[i]===0) return;
   const best=onlDuelBest(d); if(best!=null && d.tries[i].length>=best) return;
   if(pi===-1){ d.tries[i].push({i:-1, ok:false}); return onlDuelAdvance(); }
-  const used=d.used[i]||(d.used[i]=[]);
-  if(!Number.isInteger(pi)||pi<0||pi>=P.length||used.includes(pi)) return;
-  const g=P[pi].g, ok=g<=d.left[i]; used.push(pi); d.tries[i].push({i:pi, ok}); if(ok) d.left[i]-=g;
+  if(!Number.isInteger(pi)||pi<0||pi>=P.length||d.used.includes(pi)) return;
+  const g=P[pi].g, ok=g<=d.left[i]; d.used.push(pi); d.tries[i].push({i:pi, ok}); if(ok) d.left[i]-=g;
   if(ok && d.left[i]===0 && best==null) onlBroadcast({t:"solved", r:d.r, by:i, n:d.tries[i].length, kind:"exacto"});
   onlDuelAdvance();
 }
@@ -1372,7 +1371,7 @@ function onlineDuel(){
   const myT=(d.tries[me]||[]).length, gave=d.gave&&d.gave[me], mine=!d.over && !gave && d.left[me]>0 && !(best!=null&&myT>=best);
   const q0=document.getElementById("q"), keep=q0&&q0.value?{v:q0.value,f:document.activeElement===q0}:null;
   app.innerHTML = top("Duelo · Goles exactos", `Ronda <em>${ONL.r+1}</em>/${ONL.rounds}`) + `
-    <p class="rule">Objetivo <b>${d.tgt}</b>. Todos a la vez: gana quien clave el 0 en <b>menos intentos</b>. Si te pasas, no resta pero cuenta como intento.</p>
+    <p class="rule">Objetivo <b>${d.tgt}</b>. Todos a la vez: gana quien clave el 0 en <b>menos intentos</b>. Si te pasas, no resta pero cuenta como intento. <b>No se puede repetir</b> un jugador que ya haya dicho alguien.</p>
     <div class="duel d${Math.min(ONL.players.length,4)}" style="--cb:${cb};--cf:${cf}">${ONL.players.map((p,i)=>{ const tr=d.tries[i]||[]; return `
       <section class="dp ${i===me?"on":""} ${d.left[i]===0?"win":""} ${p.on&&!(d.gave&&d.gave[i])?"":"off"}">
         <header><span class="dn">${d.gave&&d.gave[i]?FLAG_SVG:""}${esc(p.n)}${i===me?" (tú)":""}</span><span class="ds">${d.gave&&d.gave[i]?"rendido":tr.length+" int."}</span></header>
@@ -1381,7 +1380,7 @@ function onlineDuel(){
       </section>`; }).join("")}</div>
     ${d.over?"":gave?`<p class="dturn">Te has rendido en este duelo</p>`:d.left[me]===0?`<p class="dturn"><b>¡Clavado en ${myT}!</b> Esperando a los demás…</p>`:!mine?`<p class="dturn">Ya no puedes igualar los ${best} intentos. Esperando…</p>`:`<p class="dturn">${best!=null?`Para empatar te quedan <b>${best-myT}</b> intento${best-myT===1?"":"s"}`:`Llevas <b>${myT}</b> intento${myT===1?"":"s"}`}</p><div id="srch"></div>`}`;
   document.getElementById("back").onclick=()=>{ if(confirm("¿Salir de la sala?")) onlLeave(); };
-  if(mine){ const q=playerSearch(document.getElementById("srch"), i=>{ if(ONL.role==="host") onlDuelPick(0, d.r, i); else onlSend(ONL.conn,{t:"pick", r:d.r, i}); }, new Set((d.used&&d.used[me])||[]));
+  if(mine){ const q=playerSearch(document.getElementById("srch"), i=>{ if(ONL.role==="host") onlDuelPick(0, d.r, i); else onlSend(ONL.conn,{t:"pick", r:d.r, i}); }, new Set((d.used||[]).flat()));
     if(keep){ q.value=keep.v; q.dispatchEvent(new Event("input")); if(keep.f) q.focus(); } }
   if(d.over || !mine) { if(d.over||gave) onlBarOff(); else onlBarOn(false); clearInterval(OT.iv); }
   else { onlBarOn(true); const key=d.r+":"+myT; if(OT.key!==key){ OT.key=key; onlTimerReset(); } }
