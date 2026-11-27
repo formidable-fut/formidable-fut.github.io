@@ -557,3 +557,22 @@ body.inonl #give{display:none!important}
 .tries li.to{color:var(--mute)}
 
 .lnk{grid-column:1/-1;border:0;background:none;color:var(--mute);font:600 13px var(--ui);text-decoration:underline;padding:4px}
+
+/* online: rivales y coop */
+#rivals{margin-top:16px}
+.rv{background:var(--card);border-radius:16px;padding:10px 12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.rvh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.rvh b{font:400 18px var(--hf);text-transform:uppercase}
+.rvh span{font:400 14px var(--meta);color:var(--mute)}
+.rvl{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:3px}
+.rvl li{display:grid;grid-template-columns:78px 1fr auto;gap:8px;font-size:12.5px;padding:4px 8px;border-radius:8px;background:var(--soft)}
+.rvl li span:first-child{color:var(--mute);font-weight:600}
+.rvl li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xg.coop .xcell small{display:block;font-size:10.5px;color:var(--mute);font-weight:500}
+.xg.coop .xcell.mine{box-shadow:inset 0 0 0 2px var(--ok)}
+.xcell.psel{position:relative;box-shadow:inset 0 0 0 2px var(--near)!important}
+.xcell .ptag{position:absolute;left:4px;right:4px;bottom:4px;font:600 10px var(--ui);color:var(--near);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coopsc{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.coopsc span{background:var(--card);border-radius:20px;padding:5px 12px;font-weight:600;font-size:13.5px;box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.coopsc span.me{box-shadow:inset 0 0 0 2px var(--ink)}
+.coopsc b{font:400 16px var(--hf);margin-left:4px}

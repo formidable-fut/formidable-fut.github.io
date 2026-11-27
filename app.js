@@ -268,7 +268,8 @@ const LEVELS_1000 = [
   {t:4000, min:300, k:4, d:"Jugadores con 300+ goles. Cada turno eliges entre 4."}
 ];
 function reto(){
-  let st, lv = store.get("reto:lv", 0);
+  const onl = typeof ONL!=="undefined" && !!ONL && ONL.kind==="reto" && ONL.game==="reto-1000" && (ONL.playing||!ONL.over);
+  let st, lv = onl ? ONL.retoLv : store.get("reto:lv", 0);
   const fresh = () => { const L=LEVELS_1000[lv]; const pool=shuffle(P.map((p,i)=>i).filter(i=>P[i].g>=L.min));
     return {L, pool, k:0, fill:SLOTS.map(()=>null), total:0, cand:null, sel:null}; };
   const deal = () => { st.cand = st.pool.splice(0, st.L.k); st.sel = st.L.k===1 ? st.cand[0] : null; };
@@ -277,7 +278,7 @@ function reto(){
     if(!done && !st.cand) deal();
     const started = st.k>0;
     app.innerHTML = top("Reto "+L.t, streakPill(id)) +
-      `<div class="seg" role="group" aria-label="Objetivo">${LEVELS_1000.map((x,j)=>`<button class="${j===lv?"on":""}" data-lv="${j}">${x.t}</button>`).join("")}</div>
+      `${onl?"":`<div class="seg" role="group" aria-label="Objetivo">${LEVELS_1000.map((x,j)=>`<button class="${j===lv?"on":""}" data-lv="${j}">${x.t}</button>`).join("")}</div>`}
       <p class="rule">${L.d} Pon cada jugador en una casilla (solo cuentan esos goles) y suma <b>${L.t}+</b>.</p>
       <div class="board rb"><div class="rtop">${!done&&L.k===1?(()=>{const c=P[st.sel];return `<div class="rp fresh"><div class="pname one" style="--full:${c.n.length}">${esc(c.n)}</div><div class="nat">${natTxt(c.nat)} · ${POS[c.pos]}</div></div>`;})():`<div class="rp"><p class="cap">${done?"Final":`Jugador ${st.k+1}/${SLOTS.length}: ${st.sel==null?"elige uno":"elige casilla"}`}</p></div>`}
         <div class="score"><span class="big" id="tot">${anim?anim.from:st.total}</span><span class="of">/${L.t}</span></div></div>
@@ -288,7 +289,7 @@ function reto(){
       <div class="opts" id="slots">${SLOTS.map((s,j)=>{ const f=st.fill[j];
         return f ? `<div class="opt sl sl-${s.k} filled${f.v>0?"":" zero"}${f.n?" new":""}">${slotSym(s.k)}<span class="st">${s.t}</span><b>${f.v}</b><small>${esc(P[f.i].n.split(" ").slice(-1)[0])}</small></div>`
           : `<button class="opt sl sl-${s.k}" data-j="${j}" ${done||st.sel==null?"disabled":""} title="${s.d}">${slotSym(s.k)}<span class="st">${s.t}</span></button>`; }).join("")}</div>
-      ${done?`<div class="row" style="margin-top:14px"><button class="btn" id="again">Otra vez</button></div>`:""}`;
+      ${done&&!onl?`<div class="row" style="margin-top:14px"><button class="btn" id="again">Otra vez</button></div>`:""}`;
     bindBack();
     app.querySelectorAll("[data-lv]").forEach(b=>b.onclick=()=>{ lv=+b.dataset.lv; store.set("reto:lv",lv); st=fresh(); render(); });
     app.querySelectorAll("#cand button").forEach(b=>b.onclick=()=>{ st.sel=+b.dataset.i; render(); });
@@ -296,6 +297,7 @@ function reto(){
       if(st.sel==null) return;
       const j=+b.dataset.j, i=st.sel, v=slotVal(P[i],SLOTS[j].k), from=st.total;
       st.fill.forEach(f=>f&&(f.n=false)); st.fill[j]={i,v,n:true}; st.total+=v; st.k++; st.cand=null; st.sel=null;
+      if(onl && typeof onlRetoProg==="function") onlRetoProg(st);
       if(st.k>=SLOTS.length) bumpStreak(id, st.total>=L.t);
       render({from});
     });
@@ -544,8 +546,7 @@ function oculto(){
 }
 
 /* ---------- 9: cuadrícula 3x3 (cruces de club / nacionalidad) ---------- */
-function cuadricula(){
-  const id="cuadricula"; let st;
+function cuadKit(){
   const bigClubs = Object.keys(byClub).filter(k=>byClub[k].size>=12);
   const bigNats = Object.keys(D.nats).filter(n=>P.filter(p=>p.nat===n).length>=15);
   const mkClub = k => ({key:"c:"+k, t:p=>p.c.includes(k), h:`<span class="kitc" style="${kitStyle(k)}">${esc(clubN(k))}</span>`, txt:clubN(k)});
@@ -561,6 +562,12 @@ function cuadricula(){
       if(ans.every(row=>row.every(a=>a.length>=2))) return {rows, cols, ans, cell:Array(9).fill(null), left:9, sel:null, done:false};
     }
   };
+  return {gen};
+}
+const cuadGenSeeded = seed => { const o=Math.random; Math.random=mulberry(seed); try{ return cuadKit().gen(); } finally { Math.random=o; } };
+function cuadricula(){
+  const id="cuadricula"; let st;
+  const {gen} = cuadKit();
   const render = () => {
     const filled = st.cell.filter(x=>x!=null).length;
     app.innerHTML = top("Cuadrícula 3x3", streakPill(id)) +
@@ -585,12 +592,15 @@ function cuadricula(){
         const k=st.sel, r=st.rows[Math.floor(k/3)], c=st.cols[k%3], ok=r.t(P[i])&&c.t(P[i]);
         st.left--; let msg="";
         if(ok){ st.cell[k]=i; st.last=k; st.sel=null; } else { st.last=null; msg=`${P[i].n} no cumple ${!r.t(P[i])?r.txt:c.txt}.`; }
-        if(st.left<=0 || st.cell.every(x=>x!=null)){ st.done=true; bumpStreak(id, st.cell.every(x=>x!=null)); }
+        if(st.left<=0 || st.cell.every(x=>x!=null)) st.done=true;
+        if(typeof onlCuadProg==="function") onlCuadProg(st);
+        if(st.done) bumpStreak(id, st.cell.every(x=>x!=null));
         render(); if(msg) document.getElementById("msg").textContent=msg;
       }, used).focus();
     }
     on("next",()=>{ st=gen(); render(); });
-    on("give",()=>{ st.done=true; bumpStreak(id,false); render(); });
+    on("give",()=>{ st.done=true; if(typeof onlCuadProg==="function") onlCuadProg(st); bumpStreak(id,false); render(); });
+    GAME = {id, timeout(){ if(st.done) return; st.left--; st.sel=null; if(st.left<=0) st.done=true; if(typeof onlCuadProg==="function") onlCuadProg(st); if(st.done) bumpStreak(id, false); render(); }};
   };
   st=gen(); render();
 }
@@ -803,7 +813,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-f";
+const APP_V = "27.11-g";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -832,6 +842,15 @@ const onlSend = (conn, m) => { try{ if(conn && conn.open) conn.send(m); }catch(e
 const onlBroadcast = m => { if(!ONL||ONL.role!=="host") return; ONL.pub("/all", m); onlHandle(m, true); };
 const onlPublic = () => ONL.players.map(p=>({n:p.n, s:p.s, on:p.on, h:p.h, ret:!!p.ret}));
 const ATT = ["oculto"];
+const RETO_OG = ["reto-1000","reto-2000","reto-3000","reto-4000"], CUAD_OG = ["cuad-vs","cuad-coop","cuad-coopvs"];
+const OG = (()=>{ const m={};
+  SHOUT.forEach(id=>m[id]={route:id, kind:ATT.includes(id)?"att":"race", t:(GAMES.find(g=>g.id===id)||{}).t, kit:id});
+  m.exacto={route:"online-duelo", kind:"duel", t:"Goles exactos", kit:"exacto"};
+  RETO_OG.forEach((id,lv)=>m[id]={route:"reto-1000", kind:"reto", lv, t:"Reto "+LEVELS_1000[lv].t, chip:String(LEVELS_1000[lv].t), kit:"reto-1000"});
+  m["cuad-vs"]={route:"cuadricula", kind:"cvs", t:"Cuadrícula VS", chip:"VS", kit:"cuadricula"};
+  m["cuad-coop"]={route:"online-coop", kind:"coop", t:"Cuadrícula Coop", chip:"Coop", kit:"cuadricula"};
+  m["cuad-coopvs"]={route:"online-coop", kind:"coopvs", t:"Cuadrícula Coop VS", chip:"Coop VS", kit:"cuadricula"};
+  return m; })();
 const onlActive = i => { const p=ONL.players[i]; return p && p.on && !p.ret; };
 function onlLeave(msg){
   if(ONL){ try{ if(ONL.role==="host") ONL.pub("/all",{t:"closed"}); else if(ONL.conn) ONL.conn.send({t:"bye"}); }catch(e){}
@@ -890,6 +909,9 @@ function onlHostRecv(conn, m){
   if(m.t==="win"||m.t==="out") return onlRaceEvent(i, m.t, m.r, cleanAns(m.a));
   if(m.t==="pick") return onlDuelPick(i, m.r, m.i);
   if(m.t==="try") return onlAttemptEvent(i, m.r, m.n, !!m.ok, cleanAns(m.a));
+  if(m.t==="prog") return onlProgEvent(i, m.r, m.d);
+  if(m.t==="csel") return onlCoopSel(i, m.r, m.k);
+  if(m.t==="cpick") return onlCoopPick(i, m.r, m.k, m.i);
   if(m.t==="surr") return onlDuelSurrender(i, m.r);
   if(m.t==="quit") return onlRetire(i);
   if(m.t==="bye") return conn.close();
@@ -903,8 +925,15 @@ function onlStart(){
 }
 function onlNextRound(r){
   if(r>=ONL.cfg.rounds) return onlBroadcast({t:"final", players:onlPublic()});
-  const game=ONL.order[r], seed=mkSeed();
-  ONL.round={r, game, out:new Set(ONL.players.map((p,i)=>p.ret?i:-1).filter(i=>i>=0)), over:false, att:{}};
+  const game=ONL.order[r], seed=mkSeed(), M=OG[game]||{kind:"race"};
+  ONL.round={r, game, kind:M.kind, prog:{}, out:new Set(ONL.players.map((p,i)=>p.ret?i:-1).filter(i=>i>=0)), over:false, att:{}};
+  if(M.kind==="coop"||M.kind==="coopvs"){
+    const n=ONL.players.filter((p,i)=>onlActive(i)).length;
+    ONL.coop={r, seed, grid:cuadGenSeeded(seed), cells:Array(9).fill(null), left:9+3*Math.max(0,n-1), sel:{}, msg:"", over:false};
+    onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
+    onlBroadcast({t:"coop", c:onlCoopPub()});
+    return;
+  }
   if(DUEL.includes(game)){
     const rng=mulberry(seed), sc=P.map((p,i)=>i).filter(i=>P[i].g>0); let tgt;
     const sh=a=>{ a=a.slice(); for(let j=a.length-1;j>0;j--){ const k=Math.floor(rng()*(j+1)); [a[j],a[k]]=[a[k],a[j]]; } return a; };
@@ -918,6 +947,7 @@ function onlNextRound(r){
 }
 function onlRaceEvent(i, kind, r, a){
   const R=ONL.round; if(!R || R.over || r!==R.r || DUEL.includes(R.game)) return;
+  if(R.kind!=="race"&&R.kind!=="att"){ if(kind!=="win"){ R.out.add(i); onlCheckRaceEnd(); } return; }
   if(kind==="win" && !ATT.includes(R.game)){ R.over=true; onlAward([i]); onlBroadcast({t:"end", r, win:[i], ans:a||"", players:onlPublic()}); }
   else if(kind!=="win"){ R.out.add(i); onlCheckRaceEnd(); }
 }
@@ -929,8 +959,32 @@ function onlAttemptEvent(i, r, n, ok, a){
     if(best===n) onlBroadcast({t:"solved", r, by:i, n}); }
   onlCheckRaceEnd();
 }
+function onlProgEvent(i, r, d){
+  const R=ONL.round; if(!R||R.over||r!==R.r||!d||typeof d!=="object") return;
+  if(R.kind==="reto"){
+    const picks=Array.isArray(d.picks)?d.picks.slice(0,12).map(x=>Array.isArray(x)?[cleanAns(x[0]).slice(0,30), cleanAns(x[1]).slice(0,16), +x[2]||0]:null).filter(Boolean):[];
+    R.prog[i]={total:Math.max(0,Math.min(99999,+d.total||0)), picks, done:!!d.done};
+  } else if(R.kind==="cvs"){
+    R.prog[i]={filled:Math.max(0,Math.min(9,+d.filled||0)), left:Math.max(0,Math.min(9,+d.left||0)), done:!!d.done};
+    if(R.prog[i].filled===9){ R.over=true; onlAward([i]); onlBroadcast({t:"prog", r, p:R.prog}); return onlBroadcast({t:"end", r, win:[i], note:`${ONL.players[i].n} ha completado la cuadrícula`, players:onlPublic()}); }
+  } else return;
+  onlBroadcast({t:"prog", r, p:R.prog});
+  onlCheckRaceEnd();
+}
 function onlCheckRaceEnd(){
   const R=ONL&&ONL.round; if(!R||R.over||DUEL.includes(R.game)) return;
+  if(R.kind==="coop"||R.kind==="coopvs") return onlCoopCheck();
+  if(R.kind==="reto"||R.kind==="cvs"){
+    const done=ONL.players.every((p,i)=>!onlActive(i)||R.out.has(i)||(R.prog[i]&&R.prog[i].done)); if(!done) return;
+    R.over=true; let w=[], note="";
+    const ids=Object.keys(R.prog).map(Number);
+    if(R.kind==="reto"){ const L=LEVELS_1000[OG[R.game].lv]; const ok=ids.filter(i=>R.prog[i].done&&R.prog[i].total>=L.t);
+      if(ok.length){ const mx=Math.max(...ok.map(i=>R.prog[i].total)); w=ok.filter(i=>R.prog[i].total===mx); }
+      note=ids.map(i=>`${ONL.players[i].n} ${R.prog[i].total}`).join(" · ")+` (objetivo ${L.t})`; }
+    else { const mx=ids.length?Math.max(...ids.map(i=>R.prog[i].filled)):0; if(mx>0) w=ids.filter(i=>R.prog[i].filled===mx);
+      note=ids.map(i=>`${ONL.players[i].n} ${R.prog[i].filled}/9`).join(" · "); }
+    onlAward(w); return onlBroadcast({t:"end", r:R.r, win:w, note, players:onlPublic()});
+  }
   if(ATT.includes(R.game)){
     const sol=Object.entries(R.att).filter(([,x])=>x.solved!=null), best=sol.length?Math.min(...sol.map(([,x])=>x.solved)):null;
     const done=ONL.players.every((p,i)=>{ if(!onlActive(i)||R.out.has(i)) return true; const t=R.att[i]; return t && (t.solved!=null || (best!=null && t.n>=best)); });
@@ -941,11 +995,35 @@ function onlCheckRaceEnd(){
   }
   if(ONL.players.every((p,i)=>!onlActive(i)||R.out.has(i))){ R.over=true; onlAward([]); onlBroadcast({t:"end", r:R.r, win:[], players:onlPublic()}); }
 }
+const onlCoopPub = () => { const c=ONL.coop; return {r:c.r, seed:c.seed, cells:c.cells, left:c.left, sel:c.sel, msg:c.msg, over:c.over}; };
+function onlCoopSel(i, r, k){ const c=ONL.coop; if(!c||c.over||r!==c.r||!onlActive(i)) return; if(k===-1||k==null) delete c.sel[i]; else if(Number.isInteger(k)&&k>=0&&k<9&&!c.cells[k]) c.sel[i]=k; else return; c.msg=""; onlBroadcast({t:"coop", c:onlCoopPub()}); }
+function onlCoopPick(i, r, k, pi){
+  const c=ONL.coop; if(!c||c.over||r!==c.r||!onlActive(i)) return;
+  if(!Number.isInteger(k)||k<0||k>8||!Number.isInteger(pi)||pi<0||pi>=P.length) return;
+  if(c.cells[k]){ c.msg=`Esa casilla ya la ha rellenado ${ONL.players[c.cells[k].by].n}`; return onlBroadcast({t:"coop", c:onlCoopPub()}); }
+  if(c.cells.some(x=>x&&x.p===pi)) return;
+  const row=c.grid.rows[Math.floor(k/3)], col=c.grid.cols[k%3], ok=row.t(P[pi])&&col.t(P[pi]);
+  c.left--;
+  if(ok){ c.cells[k]={p:pi, by:i}; Object.keys(c.sel).forEach(j=>{ if(c.sel[j]===k) delete c.sel[j]; }); c.msg=`${ONL.players[i].n}: ${P[pi].n} ✓`; }
+  else c.msg=`${ONL.players[i].n}: ${P[pi].n} no cumple ${!row.t(P[pi])?row.txt:col.txt}`;
+  onlBroadcast({t:"coop", c:onlCoopPub()}); onlCoopCheck();
+}
+function onlCoopCheck(){
+  const c=ONL.coop, R=ONL.round; if(!c||c.over||!R||R.over) return;
+  const full=c.cells.every(Boolean), allOut=ONL.players.every((p,i)=>!onlActive(i)||R.out.has(i));
+  if(!full && c.left>0 && !allOut) return;
+  c.over=true; R.over=true;
+  const cnt={}; c.cells.forEach(x=>{ if(x) cnt[x.by]=(cnt[x.by]||0)+1; });
+  let w=[], note=ONL.players.map((p,i)=>`${p.n} ${cnt[i]||0}`).join(" · ")+` · ${c.cells.filter(Boolean).length}/9`;
+  if(R.kind==="coop"){ if(full) w=ONL.players.map((p,i)=>i).filter(onlActive); }
+  else { const mx=Math.max(0,...Object.values(cnt)); if(mx>0) w=Object.keys(cnt).map(Number).filter(i=>cnt[i]===mx); }
+  onlAward(w); onlBroadcast({t:"coop", c:onlCoopPub()}); onlBroadcast({t:"end", r:R.r, win:w, note:(R.kind==="coop"?(full?"¡Cuadrícula completa entre todos! ":"No se completó. "):"")+note, players:onlPublic(), duel:true});
+}
 function onlRetire(i){
   const p=ONL.players[i]; if(!p||p.ret) return; p.ret=true;
   if(ONL.round&&!ONL.round.over){ ONL.round.out.add(i); }
   onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg});
-  if(ONL.duel&&!ONL.duel.over) onlDuelSurrender(i, ONL.duel.r); else onlCheckRaceEnd();
+  if(ONL.duel&&!ONL.duel.over&&ONL.round&&ONL.round.kind==="duel") onlDuelSurrender(i, ONL.duel.r); else onlCheckRaceEnd();
 }
 function onlAbort(){
   if(!ONL||ONL.role!=="host") return;
@@ -1021,16 +1099,17 @@ function onlHandle(m, local){
   const okPlayers = a => Array.isArray(a) && a.length<=16 && a.every(p=>p&&typeof p.n==="string"&&Number.isInteger(p.s));
   switch(m.t){
     case "welcome": if(Number.isInteger(m.you)) ONL.me=m.you; location.hash="online-sala"; break;
-    case "lobby": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:Array.isArray(p.h)?p.h:[]})); if(m.cfg&&ONL.role==="guest"&&Array.isArray(m.cfg.games)) ONL.cfg={rounds:+m.cfg.rounds||5, games:m.cfg.games.filter(g=>GAMES.some(x=>x.id===g))};
+    case "lobby": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:Array.isArray(p.h)?p.h:[]})); if(m.cfg&&ONL.role==="guest"&&Array.isArray(m.cfg.games)) ONL.cfg={rounds:+m.cfg.rounds||5, games:m.cfg.games.filter(g=>OG[g])};
       if(ONL.role==="guest"&&location.hash==="#online-fin"){ ONL.r=-1; ONL.game=null; location.hash="online-sala"; } else if(location.hash==="#online-sala") onlineLobby(); break;
     case "round": {
-      if(!Number.isInteger(m.r)||!GAMES.some(g=>g.id===m.game)) return;
+      if(!Number.isInteger(m.r)||!OG[m.game]) return;
       if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]}));
-      clearInterval(ONL.nxT); ONL.r=m.r; ONL.rounds=m.rounds; ONL.game=m.game; ONL.over=false; sheetOff();
+      const M=OG[m.game]; clearInterval(ONL.nxT); ONL.r=m.r; ONL.rounds=m.rounds; ONL.og=m.game; ONL.kind=M.kind; ONL.game=M.route; ONL.retoLv=M.lv; ONL.myDone=false; ONL.prog={}; ONL.mySel=null; ONL.over=false; sheetOff();
       if(ONL.retired){ ONL.playing=false; if(location.hash==="#online-sala") onlineLobby(); break; }
       ONL.playing=true;
-      if(DUEL.includes(m.game)){ location.hash="online-duelo"; if(location.hash==="#online-duelo") route(); }
-      else { ONL_SEED=m.seed>>>0; if(location.hash.slice(1)===m.game) route(); else location.hash=m.game; }
+      if(M.kind==="duel"){ location.hash="online-duelo"; if(location.hash==="#online-duelo") route(); }
+      else if(M.kind==="coop"||M.kind==="coopvs"){ ONL.coopGrid=cuadGenSeeded(m.seed>>>0); ONL.coopState=null; if(location.hash==="#online-coop") route(); else location.hash="online-coop"; }
+      else { ONL_SEED=(M.kind==="reto"? (m.seed+Math.imul((ONL.me||0)+1,2654435761)) : m.seed)>>>0; if(location.hash.slice(1)===M.route) route(); else location.hash=M.route; }
       break; }
     case "duel": if(m.d&&Array.isArray(m.d.left)){ ONL.duelState=m.d; if(location.hash==="#online-duelo") onlineDuel(); } break;
     case "end": {
@@ -1039,7 +1118,7 @@ function onlHandle(m, local){
       if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]}));
       const w=(Array.isArray(m.win)?m.win:[]).filter(i=>ONL.players[i]), names=w.map(i=>esc(ONL.players[i].n)).join(" y ");
       const mine=w.includes(ONL.me), last=ONL.r>=ONL.rounds-1;
-      setTimeout(()=>{ const d=showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?(mine&&w.length===1?"¡Punto para ti!":`Punto para ${names}`):"Nadie puntúa"}</b>${m.ans&&!mine?`<span class="ans">Ha dicho <strong>${esc(cleanAns(m.ans))}</strong></span>`:""}<small>${ONL.players.map(p=>`${esc(p.n)} ${p.s}`).join(" · ")}</small></div>
+      setTimeout(()=>{ const d=showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?(mine&&w.length===1?"¡Punto para ti!":`Punto para ${names}`):"Nadie puntúa"}</b>${m.ans&&!mine?`<span class="ans">Ha dicho <strong>${esc(cleanAns(m.ans))}</strong></span>`:""}${m.note?`<span class="ans">${esc(String(m.note).slice(0,160))}</span>`:""}<small>${ONL.players.map(p=>`${esc(p.n)} ${p.s}`).join(" · ")}</small></div>
         ${ONL.role==="host"?`<div class="nx"><button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"} <span id="cdn">5</span></button><button class="btn ghost pz" id="pz" aria-label="Pausar">⏸</button></div><button class="lnk" id="abort">Terminar partida y volver a la sala</button>`:`<p class="wait" id="gcd">${last?"Clasificación":"Siguiente ronda"} en 5…</p>`}`);
         clearInterval(ONL.nxT); let left=5;
         const b=document.getElementById("shgo"), go=()=>{ clearInterval(ONL.nxT); if(b) b.disabled=true; onlNextRound(ONL.r+1); };
@@ -1049,10 +1128,12 @@ function onlHandle(m, local){
         const pz=document.getElementById("pz"); if(pz) pz.onclick=()=>{ clearInterval(ONL.nxT); const c=document.getElementById("cdn"); if(c) c.textContent=""; pz.disabled=true; pz.textContent="⏸ En pausa"; onlBroadcast({t:"pause"}); };
       }, m.duel?600:250);
       break; }
-    case "final": clearInterval(ONL.nxT); ONL.retired=false; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
+    case "final": clearInterval(ONL.nxT); ONL.retired=false; ONL.kind=null; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
+    case "prog": if(m.r===ONL.r&&m.p&&typeof m.p==="object"){ ONL.prog=m.p; onlRivals(); } break;
+    case "coop": if(m.c&&Array.isArray(m.c.cells)&&m.c.r===ONL.r){ ONL.coopState=m.c; if(location.hash==="#online-coop") onlineCoop(); } break;
     case "solved": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${esc(ONL.players[m.by].n)} lo ha adivinado en ${+m.n} intento${+m.n===1?"":"s"}. ${ONL.playing?"¡Iguálalo!":""}`); break;
     case "pause": { const g=document.getElementById("gcd"); if(g){ clearInterval(ONL.nxT); g.textContent="En pausa: el anfitrión pasará de ronda"; } break; }
-    case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") onlineLobby(); else location.hash="online-sala"; break;
+    case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.kind=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") onlineLobby(); else location.hash="online-sala"; break;
     case "closed": if(!local) onlLeave(typeof m.why==="string"?m.why.slice(0,80):"El anfitrión ha cerrado la sala."); break;
   }
 }
@@ -1064,8 +1145,14 @@ const onlAttempt = (id, n, ok) => {
 };
 /* resultado de un juego "a gritar" en una ronda online */
 const onlineResult = (id, win) => {
+  if(id && id.startsWith("reto-")) id="reto-1000";
   if(!ONL || !ONL.playing || id!==ONL.game) return false;
   ONL.playing=false; onlBarOff();
+  if(ONL.kind==="reto"||ONL.kind==="cvs"){
+    if(!ONL.myDone){ if(ONL.role==="host") onlRaceEvent(0,"out",ONL.r); else onlSend(ONL.conn,{t:"out", r:ONL.r}); }
+    setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("ok", `<span class="sh-ic">⏳</span><div class="sh-tx"><b>¡Hecho!</b><small>Esperando a que terminen los demás…</small></div>`); }, 600);
+    return true;
+  }
   const a=win?cleanAns(LAST_PICK):""; if(ONL.role==="host") onlRaceEvent(0, win?"win":"out", ONL.r, a); else onlSend(ONL.conn,{t:win?"win":"out", r:ONL.r, a});
   if(win && ATT.includes(id)){ setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("ok", `<span class="sh-ic">✓</span><div class="sh-tx"><b>¡Acertado!</b><small>Esperando a ver si alguien lo iguala…</small></div>`); }, 100); return true; }
   if(!win) setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("bad", `<span class="sh-ic">✕</span><div class="sh-tx"><b>Sin intentos</b><small>Esperando a que acaben los demás…</small></div>`); }, 250);
@@ -1073,6 +1160,50 @@ const onlineResult = (id, win) => {
   return true;
 };
 
+/* ---- progreso propio en Reto y Cuadrícula VS ---- */
+function onlSendProg(d){ if(!ONL||ONL.r<0) return; if(d.done) ONL.myDone=true; if(ONL.role==="host") onlProgEvent(0, ONL.r, d); else onlSend(ONL.conn,{t:"prog", r:ONL.r, d}); }
+const onlRetoProg = st => { if(!ONL||ONL.kind!=="reto") return; onlSendProg({total:st.total, done:st.k>=SLOTS.length, picks:st.fill.map((f,j)=>f?[P[f.i].n, SLOTS[j].t, f.v]:null).filter(Boolean)}); };
+const onlCuadProg = st => { if(!ONL||ONL.kind!=="cvs"||location.hash!=="#cuadricula") return; onlSendProg({filled:st.cell.filter(x=>x!=null).length, left:st.left, done:!!st.done}); };
+function onlRivals(){
+  if(!ONL||(ONL.kind!=="reto"&&ONL.kind!=="cvs")||location.hash.slice(1)!==ONL.game) return;
+  let box=document.getElementById("rivals"); if(!box){ box=document.createElement("div"); box.id="rivals"; app.appendChild(box); }
+  const others=Object.keys(ONL.prog||{}).map(Number).filter(i=>i!==ONL.me&&ONL.players[i]);
+  const L=ONL.kind==="reto"?LEVELS_1000[ONL.retoLv]:null;
+  box.innerHTML = `<h3 class="ph">Rivales</h3>` + (others.length? others.map(i=>{ const p=ONL.prog[i], n=esc(ONL.players[i].n);
+    if(ONL.kind==="cvs") return `<div class="rv"><div class="rvh"><b>${n}</b><span>${p.filled}/9 · ${p.left} intentos${p.done?" · terminado":""}</span></div><div class="dbar"><i style="width:${p.filled/9*100}%"></i></div></div>`;
+    return `<div class="rv"><div class="rvh"><b>${n}</b><span>${p.total}/${L.t}${p.done?" · terminado":""}</span></div><div class="dbar"><i style="width:${Math.min(100,p.total/L.t*100)}%"></i></div>
+      <ol class="rvl">${(p.picks||[]).map(x=>`<li><span>${esc(x[1])}</span><span>${esc(x[0])}</span><b>${+x[2]}</b></li>`).join("")}</ol></div>`; }).join("") : `<p class="wait">Aún no han jugado.</p>`);
+}
+/* ---- Cuadrícula cooperativa (Coop y Coop VS) ---- */
+function onlineCoop(){
+  if(!ONL){ location.hash="online"; return; }
+  const q0=document.getElementById("q"), keep=q0&&q0.value&&ONL.mySel!=null?{v:q0.value, f:document.activeElement===q0, k:ONL.mySel}:null;
+  const c=ONL.coopState, g=ONL.coopGrid; if(!c||!g){ app.innerHTML=top("Cuadrícula","")+`<p class="wait">Conectando…</p>`; return; }
+  const vs=ONL.kind==="coopvs", over=c.over||!ONL.playing;
+  if(ONL.mySel!=null && c.cells[ONL.mySel]) ONL.mySel=null;
+  const selBy={}; Object.entries(c.sel||{}).forEach(([i,k])=>{ if(+i!==ONL.me) (selBy[k]=selBy[k]||[]).push(+i); });
+  const cnt={}; c.cells.forEach(x=>{ if(x) cnt[x.by]=(cnt[x.by]||0)+1; });
+  app.innerHTML = top(vs?"Cuadrícula · Coop VS":"Cuadrícula · Coop", `Ronda <em>${ONL.r+1}</em>/${ONL.rounds}`) + `
+    <p class="rule">${vs?"Rellenáis la misma cuadrícula, pero <b>puntúa quien más casillas rellene</b>.":"Rellenad juntos la cuadrícula. Si la completáis, <b>punto para todos</b>."} Ves en directo la casilla que ha elegido tu compañero.</p>
+    <div class="xg coop">
+      <div class="xh xc"><b>${c.left}</b><small>intentos</small></div>
+      ${g.cols.map(x=>`<div class="xh">${x.h}</div>`).join("")}
+      ${g.rows.map((r,ri)=>`<div class="xh">${r.h}</div>`+g.cols.map((cc,ci)=>{ const k=ri*3+ci, v=c.cells[k];
+        if(v) return `<div class="xcell ok ${v.by===ONL.me?"mine":""}">${esc(P[v.p].n)}<small>${esc((ONL.players[v.by]||{}).n||"")}</small></div>`;
+        const others=(selBy[k]||[]).map(i=>esc(ONL.players[i].n)).join(", ");
+        return `<button class="xcell ${ONL.mySel===k?"sel":""} ${others?"psel":""}" data-k="${k}" ${over?"disabled":""}>${ONL.mySel===k?"Elige…":"+"}${others?`<span class="ptag">${others}</span>`:""}</button>`; }).join("")).join("")}
+    </div>
+    <p class="hint">${esc(c.msg||"")}</p>
+    <div class="coopsc">${ONL.players.map((p,i)=>p.on?`<span class="${i===ONL.me?"me":""}">${esc(p.n)} <b>${cnt[i]||0}</b></span>`:"").join("")}</div>
+    <div id="srch">${!over&&ONL.mySel==null?`<p class="cap">Toca una casilla para rellenarla.</p>`:""}</div>`;
+  document.getElementById("back").onclick=()=>{ if(confirm("¿Salir de la sala?")) onlLeave(); };
+  const send=m=>{ if(ONL.role==="host"){ if(m.t==="csel") onlCoopSel(0,m.r,m.k); else onlCoopPick(0,m.r,m.k,m.i); } else onlSend(ONL.conn,m); };
+  app.querySelectorAll(".xcell[data-k]").forEach(b=>b.onclick=()=>{ const k=+b.dataset.k; ONL.mySel = ONL.mySel===k?null:k; send({t:"csel", r:c.r, k:ONL.mySel==null?-1:ONL.mySel}); onlineCoop(); });
+  if(!over && ONL.mySel!=null){ const used=new Set(c.cells.filter(Boolean).map(x=>x.p)); const k=ONL.mySel;
+    const q=playerSearch(document.getElementById("srch"), i=>{ send({t:"cpick", r:c.r, k, i}); }, used);
+    if(keep&&keep.k===k){ q.value=keep.v; q.dispatchEvent(new Event("input")); if(keep.f) q.focus(); } else q.focus(); }
+  if(over) onlBarOff(); else onlBarOn(false);
+}
 /* ---- barra de ronda online: tiempo por intento, rendirse, abandonar ---- */
 const TURN_S = window.FFUT_TURN || 45;
 let OT = {end:0, iv:null};
@@ -1100,6 +1231,7 @@ function onlGiveUp(){
   if(!ONL) return;
   if(location.hash==="#online-duelo"){ const d=ONL.duelState; if(!d||d.over) return; if(ONL.role==="host") onlDuelSurrender(0, d.r); else onlSend(ONL.conn,{t:"surr", r:d.r}); onlBarOff(); return; }
   if(!ONL.playing) return;
+  if(location.hash==="#online-coop"){ ONL.playing=false; onlBarOff(); if(ONL.role==="host") onlRaceEvent(0,"out",ONL.r); else onlSend(ONL.conn,{t:"out", r:ONL.r}); showSheet("bad", `<span class="sh-ic">✕</span><div class="sh-tx"><b>Te has rendido</b><small>Esperando a los demás…</small></div>`); return; }
   const g=document.getElementById("give"); if(g) g.click(); else bumpStreak(ONL.game,false);
 }
 function onlQuit(){
@@ -1109,7 +1241,7 @@ function onlQuit(){
   onlSend(ONL.conn,{t:"quit"}); ONL.retired=true; ONL.playing=false; onlBarOff(); sheetOff(); location.hash="online-sala";
 }
 function onlToast(html){ let t=document.getElementById("otoast"); if(t) t.remove(); t=document.createElement("div"); t.id="otoast"; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); }, 4500); }
-function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ONL.playing && h===ONL.game){ onlBarOn(true); onlTimerReset(); } }
+function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ["duel","coop","coopvs"].includes(ONL.kind)) return; if(ONL && ONL.playing && h===ONL.game){ const tm=ONL.kind!=="reto"; onlBarOn(tm); if(tm) onlTimerReset(); else clearInterval(OT.iv); } if(ONL && h===ONL.game && (ONL.kind==="reto"||ONL.kind==="cvs")) setTimeout(onlRivals,0); }
 /* ---- pantallas ---- */
 function onlineHome(){
   sheetOff();
@@ -1138,6 +1270,7 @@ function onlineLobby(){
   const host=ONL.role==="host", link=location.origin+location.pathname+"?sala="+ONL.code+"#online";
   const cfg=ONL.cfg||{rounds:5,games:[]};
   const chip=g=>`<button data-g="${g.id}" class="${cfg.games.includes(g.id)?"on":""}" ${host?"":"disabled"} style="--cb:${CARD_KIT[g.id][0]};--cf:${CARD_KIT[g.id][1]}">${esc(g.t)}</button>`;
+  const ochip=id=>{ const M=OG[id]; return `<button data-g="${id}" class="${cfg.games.includes(id)?"on":""}" ${host?"":"disabled"} style="--cb:${CARD_KIT[M.kit][0]};--cf:${CARD_KIT[M.kit][1]}">${esc(M.chip)}</button>`; };
   app.innerHTML = top("Sala online", "") + `
     <div class="code"><p class="t-k">Código de sala</p><div class="cv2">${esc(ONL.code)}</div>
       ${host?`<p class="sig ${ONL.sig===false?"off":""}">${ONL.sig===false?"Reconectando… vuelve a esta pantalla":"Sala abierta · deja esta pantalla abierta mientras se unen"}</p>`:""}
@@ -1148,6 +1281,8 @@ function onlineLobby(){
     ${host?`<h3 class="ph">Rondas</h3><div class="seg">${[3,5,10].map(r=>`<button data-r="${r}" class="${r===cfg.rounds?"on":""}">${r}</button>`).join("")}</div>`:`<p class="rule">Rondas: <b>${cfg.rounds}</b></p>`}
     <h3 class="ph">A ver quién es más rápido</h3><div class="gpick">${GAMES.filter(g=>SHOUT.includes(g.id)).map(chip).join("")}</div>
     <h3 class="ph">Duelo por turnos</h3><div class="gpick">${GAMES.filter(g=>DUEL.includes(g.id)).map(chip).join("")}</div>
+    <h3 class="ph">Reto de goles <small>jugadores al azar para cada uno · gana quien lo supere con más goles</small></h3><div class="gpick">${RETO_OG.map(ochip).join("")}</div>
+    <h3 class="ph">Cuadrícula <small>VS: cada uno la suya · Coop: juntos · Coop VS: juntos, puntúa quien más rellene</small></h3><div class="gpick">${CUAD_OG.map(ochip).join("")}</div>
     <div class="row" style="margin-top:18px">${host?`<button class="btn" id="go" ${ONL.players.filter(p=>p.on).length>=2&&cfg.games.length?"":"disabled"}>Empezar</button>`:`<p class="wait">Esperando a que el anfitrión empiece…</p>`}<button class="btn ghost" id="leave">Salir</button></div>`;
   document.getElementById("back").onclick=()=>onlLeave();
   on("leave",()=>onlLeave());
@@ -1192,8 +1327,8 @@ function onlineEnd(){
   on("again",()=>{ ONL.started=false; ONL.r=-1; ONL.round=null; ONL.duel=null; ONL.players.forEach(p=>{p.s=0;p.h=[];}); onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg}); location.hash="online-sala"; });
 }
 
-const ROUTES = {online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
-const route = () => { const h=location.hash.slice(1); GAME={}; const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); const inO=!!(ONL&&((h===ONL.game&&(ONL.playing||ONL.over))||h==="online-duelo")); document.body.classList.toggle("inonl", inO); if(!inO&&typeof onlBarOff==="function") onlBarOff(); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
+const ROUTES = {"online-coop":onlineCoop, online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
+const route = () => { const h=location.hash.slice(1); GAME={}; const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); const inO=!!(ONL&&((h===ONL.game&&(ONL.playing||ONL.over))||h==="online-duelo"||h==="online-coop")); document.body.classList.toggle("inonl", inO); if(!inO&&typeof onlBarOff==="function") onlBarOff(); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
 
 fetch("data.json",{cache:"no-cache"}).then(r=>r.json()).then(d=>{
   D=d; P=d.players; CK=Object.keys(d.clubs);
