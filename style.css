@@ -139,7 +139,9 @@ h1,h2,h3{font-family:var(--hf);font-weight:400;text-transform:uppercase;line-hei
 .dots svg{width:56%;height:56%;fill:none;stroke:currentColor;stroke-width:3.4;stroke-linecap:round;stroke-linejoin:round}
 .dots svg .a{fill:currentColor}
 @media(min-width:900px){.dots{max-width:520px}}
-.hero h1 .fit-in i{display:inline-block;width:.2em;height:.2em;border-radius:50%;background:var(--gold);margin-left:.05em;vertical-align:baseline}
+/* punto de FORMIDABLE: balón minimalista. Diseño anterior guardado: añade la clase "v1" al h1 (punto dorado liso) */
+.hero h1 .fit-in i{display:inline-block;width:.22em;height:.22em;border-radius:50%;background:var(--gold) url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22%23e2a704%22/%3E%3Cpath%20d%3D%22M50%2034l15%2011-6%2018H41l-6-18z%22%20fill%3D%22%23fff%22/%3E%3Cg%20stroke%3D%22%23fff%22%20stroke-width%3D%226%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M50%2034V8M65%2045l24-8M59%2063l15%2021M41%2063L26%2084M35%2045l-24-8%22/%3E%3C/g%3E%3C/svg%3E") center/100% no-repeat;margin-left:.05em;vertical-align:baseline}
+.hero h1.v1 .fit-in i{width:.2em;height:.2em;background:var(--gold)}
 
 .sec{display:flex;justify-content:space-between;align-items:baseline;margin:22px 2px 12px}
 .sec h2{font-size:24px}
