@@ -144,7 +144,7 @@ function kitSVG(id, cls){
     <text x="100" y="78" text-anchor="middle" class="kname" fill="${k.n}" ${k.name.length>8?`textLength="96" lengthAdjust="spacingAndGlyphs"`:""}>${k.name}</text>
     <text x="100" y="${nsize>60?160:148}" text-anchor="middle" class="knum" font-size="${nsize}" fill="${k.n}">${numStr}</text></svg>`;
 }
-const CARD_KIT = {"compatriota": ["#c8322b", "#fff", "3 intentos"], "conexion": ["#13306b", "#fff", "3 intentos"], "reto-1000": ["#0e8c80", "#fff", "12 casillas"], "exacto": ["#0d6206", "#fff", "Cifra exacta"], "pistas": ["#e0457b", "#fff", "6 pistas"], "impostor": ["#121212", "#fff", "1 de 6"], "comparador": ["#2e83cf", "#fff", "Atributos"], "oculto": ["#4b2a7b", "#fff", "Letra a letra"], "cuadricula": ["#e8661c", "#fff", "9 casillas"], "colores": ["#7a1630", "#fff", "3 intentos"]};
+const CARD_KIT = {"compatriota": ["#c8322b", "#fff", "3 intentos"], "conexion": ["#13306b", "#fff", "3 intentos"], "reto-1000": ["#0e8c80", "#fff", "12 casillas"], "exacto": ["#0d6206", "#fff", "Cifra exacta"], "pistas": ["#e0457b", "#fff", "6 pistas"], "impostor": ["#141414", "#fff", "1 de 6"], "comparador": ["#2e83cf", "#fff", "Atributos"], "oculto": ["#4b2a7b", "#fff", "Letra a letra"], "cuadricula": ["#e8661c", "#fff", "9 casillas"], "colores": ["#7a1630", "#fff", "3 intentos"]};
 const SUN='<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10" cy="10" r="3.6"/><path d="M10 1.5v2.2M10 16.3v2.2M1.5 10h2.2M16.3 10h2.2M4 4l1.6 1.6M14.4 14.4 16 16M4 16l1.6-1.6M14.4 5.6 16 4"/></svg>';
 const MOON='<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.5 12.6A7 7 0 0 1 7.4 3.5a7 7 0 1 0 9.1 9.1z"/></svg>';
 const theme = () => document.documentElement.dataset.theme;
@@ -813,7 +813,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-g";
+const APP_V = "27.11-h";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
