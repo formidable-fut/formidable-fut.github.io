@@ -81,6 +81,7 @@ const bindBack = () => document.getElementById("back").onclick = () => { locatio
 const on = (id, fn) => { const el=document.getElementById(id); if(el) el.onclick=fn; };
 const resBox = (win, title, body) => `<div class="res ${win?"ok":"bad"}"><span class="ricon" aria-hidden="true">${win?"✓":"✕"}</span><div><h3>${title}</h3>${body?`<p>${body}</p>`:""}</div></div>`;
 
+let LAST_PICK = "";
 function makeSearch(el, items, onPick, placeholder){
   el.innerHTML = `<div class="search"><input id="q" type="search" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="${placeholder}" aria-label="${placeholder}"><ul class="sugs" id="sugs"></ul></div>`;
   const q=el.querySelector("#q"), ul=el.querySelector("#sugs");
@@ -91,7 +92,7 @@ function makeSearch(el, items, onPick, placeholder){
     ul.innerHTML = hits.length ? hits.map(h=>`<li><button data-v="${esc(h.v)}">${esc(h.label)}<span>${h.side||""}</span></button></li>`).join("")
       : `<li class="none">No está en la base (aún).</li>`;
   });
-  ul.addEventListener("click", e => { const b=e.target.closest("button"); if(!b) return; q.value=""; ul.innerHTML=""; onPick(b.dataset.v); });
+  ul.addEventListener("click", e => { const b=e.target.closest("button"); if(!b) return; const it=items.find(x=>String(x.v)===b.dataset.v); LAST_PICK=it?it.label:""; q.value=""; ul.innerHTML=""; onPick(b.dataset.v); });
   return q;
 }
 const playerSearch = (el, onPick, used, noFlag) => makeSearch(el, P.map((p,i)=>({v:String(i),k:p._k,label:p.n,side:noFlag?"":flagOf(p)})).filter(x=>!(used&&used.has(+x.v))), v=>onPick(+v), "Escribe un jugador…");
@@ -449,7 +450,7 @@ function impostor(){
       <div style="margin-top:14px">${done?resBox(win, win?"¡Pillado!":"Ese no era", `${esc(st.c.label)}… menos ${esc(P[st.odd].n)}.`):""}</div>
       <div class="row">${done?`<button class="btn" id="next">Siguiente</button>`:""}</div>`;
     bindBack();
-    app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{ st.pick=+b.dataset.i; bumpStreak(id, st.pick===st.odd); render(); });
+    app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{ st.pick=+b.dataset.i; LAST_PICK=(b.childNodes[0]&&b.childNodes[0].textContent||b.textContent||"").trim(); bumpStreak(id, st.pick===st.odd); render(); });
     on("next",()=>{ st=gen(); render(); });
   };
   st=gen(); render();
@@ -782,12 +783,13 @@ let ONL = null, ONL_SEED = null;
 const mkCode = () => { const a=new Uint32Array(6); crypto.getRandomValues(a); return [...a].map(x=>ONL_ALPHA[x%ONL_ALPHA.length]).join(""); };
 const mkSeed = () => { const a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]; };
 const mulberry = a => () => { a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
+const cleanAns = a => String(a||"").replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim().slice(0,48);
 const cleanName = n => String(n||"").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g,"").trim().slice(0,14);
 const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-c";
+const APP_V = "27.11-d";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -869,7 +871,7 @@ function onlHostRecv(conn, m){
     return;
   }
   const i=conn._pidx; if(i==null) return;
-  if(m.t==="win"||m.t==="out") return onlRaceEvent(i, m.t, m.r);
+  if(m.t==="win"||m.t==="out") return onlRaceEvent(i, m.t, m.r, cleanAns(m.a));
   if(m.t==="pick") return onlDuelPick(i, m.r, m.i);
   if(m.t==="bye") return conn.close();
 }
@@ -894,9 +896,9 @@ function onlNextRound(r){
     onlBroadcast({t:"duel", d:ONL.duel});
   } else onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
 }
-function onlRaceEvent(i, kind, r){
+function onlRaceEvent(i, kind, r, a){
   const R=ONL.round; if(!R || R.over || r!==R.r || DUEL.includes(R.game)) return;
-  if(kind==="win"){ R.over=true; onlAward([i]); onlBroadcast({t:"end", r, win:[i], players:onlPublic()}); }
+  if(kind==="win"){ R.over=true; onlAward([i]); onlBroadcast({t:"end", r, win:[i], ans:a||"", players:onlPublic()}); }
   else { R.out.add(i); onlCheckRaceEnd(); }
 }
 function onlCheckRaceEnd(){
@@ -978,7 +980,7 @@ function onlHandle(m, local){
       if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,h:p.h||[]}));
       const w=(Array.isArray(m.win)?m.win:[]).filter(i=>ONL.players[i]), names=w.map(i=>esc(ONL.players[i].n)).join(" y ");
       const mine=w.includes(ONL.me), last=ONL.r>=ONL.rounds-1;
-      setTimeout(()=>{ const d=showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?(mine&&w.length===1?"¡Punto para ti!":`Punto para ${names}`):"Nadie puntúa"}</b><small>${ONL.players.map(p=>`${esc(p.n)} ${p.s}`).join(" · ")}</small></div>
+      setTimeout(()=>{ const d=showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?(mine&&w.length===1?"¡Punto para ti!":`Punto para ${names}`):"Nadie puntúa"}</b>${m.ans&&!mine?`<span class="ans">Ha dicho <strong>${esc(cleanAns(m.ans))}</strong></span>`:""}<small>${ONL.players.map(p=>`${esc(p.n)} ${p.s}`).join(" · ")}</small></div>
         ${ONL.role==="host"?`<button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"}</button>`:`<p class="wait">Esperando al anfitrión…</p>`}`);
         const b=document.getElementById("shgo"); if(b) b.onclick=()=>{ b.disabled=true; onlNextRound(ONL.r+1); }; }, m.duel?600:250);
       break; }
@@ -990,7 +992,7 @@ function onlHandle(m, local){
 const onlineResult = (id, win) => {
   if(!ONL || !ONL.playing || id!==ONL.game) return false;
   ONL.playing=false;
-  if(ONL.role==="host") onlRaceEvent(0, win?"win":"out", ONL.r); else onlSend(ONL.conn,{t:win?"win":"out", r:ONL.r});
+  const a=win?cleanAns(LAST_PICK):""; if(ONL.role==="host") onlRaceEvent(0, win?"win":"out", ONL.r, a); else onlSend(ONL.conn,{t:win?"win":"out", r:ONL.r, a});
   if(!win) setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("bad", `<span class="sh-ic">✕</span><div class="sh-tx"><b>Sin intentos</b><small>Esperando a que acaben los demás…</small></div>`); }, 250);
   else setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("ok", `<span class="sh-ic">✓</span><div class="sh-tx"><b>¡Correcto!</b><small>Comprobando quién ha sido el primero…</small></div>`); }, 100);
   return true;

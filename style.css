@@ -522,3 +522,6 @@ body.pdone #give, body.pdone #srch, body.pdone #next{display:none}
 
 .ver{font:400 12px var(--meta);color:var(--mute);margin:14px 2px 0;opacity:.7}
 #ostat:empty{display:none}
+
+.sh-tx .ans{display:block;margin:4px 0 2px;font-size:15px}
+.sh-tx .ans strong{font:400 20px var(--hf);text-transform:uppercase;color:var(--ok)}
