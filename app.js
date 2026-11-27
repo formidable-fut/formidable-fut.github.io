@@ -860,7 +860,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-m";
+const APP_V = "27.11-o";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -961,6 +961,7 @@ function onlHostRecv(conn, m){
   if(m.t==="cpick") return onlCoopPick(i, m.r, m.k, m.i);
   if(m.t==="surr") return onlDuelSurrender(i, m.r);
   if(m.t==="quit") return onlRetire(i);
+  if(m.t==="flag"){ if(ONL.round&&m.r===ONL.round.r&&!ONL.round.over) onlBroadcast({t:"gaveup", r:m.r, by:i, quit:!!m.quit}); return; }
   if(m.t==="bye") return conn.close();
 }
 function onlStart(){
@@ -987,7 +988,7 @@ function onlNextRound(r){
     for(;;){ const k=3+Math.floor(rng()*3); tgt=sh(sc).slice(0,k).reduce((s,i)=>s+P[i].g,0); if(tgt>=300&&tgt<=1200) break; }
     const on=ONL.players.map(p=>p.on);
     const act0=ONL.players.map((p,i)=>onlActive(i));
-    ONL.duel={r, tgt, left:ONL.players.map(()=>tgt), tries:ONL.players.map(()=>[]), used:[], turn:act0.indexOf(true), over:false, win:[], gave:ONL.players.map(p=>!!p.ret)};
+    ONL.duel={r, tgt, left:ONL.players.map(()=>tgt), tries:ONL.players.map(()=>[]), used:ONL.players.map(()=>[]), turn:-1, over:false, win:[], gave:ONL.players.map(p=>!!p.ret)};
     onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
     onlBroadcast({t:"duel", d:ONL.duel});
   } else onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
@@ -1079,10 +1080,13 @@ function onlAbort(){
 }
 const onlAward = w => ONL.players.forEach((p,i)=>{ if(w.includes(i)) p.s++; p.h.push(w.includes(i)?1:0); });
 function onlDuelPick(i, r, pi){
-  const d=ONL.duel; if(!d||d.over||r!==d.r||i!==d.turn) return;
+  const d=ONL.duel; if(!d||d.over||r!==d.r||!onlActive(i)||d.gave[i]||d.left[i]===0) return;
+  const best=onlDuelBest(d); if(best!=null && d.tries[i].length>=best) return;
   if(pi===-1){ d.tries[i].push({i:-1, ok:false}); return onlDuelAdvance(); }
-  if(!Number.isInteger(pi)||pi<0||pi>=P.length||d.used.includes(pi)) return;
-  const g=P[pi].g, ok=g<=d.left[i]; d.used.push(pi); d.tries[i].push({i:pi, ok}); if(ok) d.left[i]-=g;
+  const used=d.used[i]||(d.used[i]=[]);
+  if(!Number.isInteger(pi)||pi<0||pi>=P.length||used.includes(pi)) return;
+  const g=P[pi].g, ok=g<=d.left[i]; used.push(pi); d.tries[i].push({i:pi, ok}); if(ok) d.left[i]-=g;
+  if(ok && d.left[i]===0 && best==null) onlBroadcast({t:"solved", r:d.r, by:i, n:d.tries[i].length, kind:"exacto"});
   onlDuelAdvance();
 }
 function onlDuelSurrender(i, r){
@@ -1091,21 +1095,21 @@ function onlDuelSurrender(i, r){
   const alive=ONL.players.map((p,j)=>j).filter(j=>onlActive(j)&&!d.gave[j]);
   if(alive.length===1 && ONL.players.filter((p,j)=>p.on).length>1){ d.over=true; d.win=alive; onlAward(alive); onlBroadcast({t:"duel", d}); return onlBroadcast({t:"end", r:d.r, win:alive, players:onlPublic(), duel:true, why:"rendición"}); }
   if(!alive.length) return onlDuelFinish(true);
-  if(d.turn===i) onlDuelAdvance(); else onlBroadcast({t:"duel", d});
+  onlDuelAdvance();
 }
+/* duelo online simultáneo: gana quien clave el 0 en menos intentos; los demás siguen mientras puedan igualarlo */
+const onlDuelBest = d => { const z=d.left.map((x,j)=>x===0?d.tries[j].length:null).filter(x=>x!=null); return z.length?Math.min(...z):null; };
 function onlDuelAdvance(){
-  const d=ONL.duel, act=ONL.players.map((p,j)=>onlActive(j) && !d.gave[j] && d.left[j]>0);
-  const steps=j=>d.tries[j].length, t=d.turn;
-  const roundDone = ONL.players.every((p,j)=>!onlActive(j) || d.gave[j] || d.left[j]===0 || steps(j)>=steps(t));
-  if(roundDone && d.left.some(x=>x===0)) return onlDuelFinish(false);
-  if(!act.some(Boolean)) return onlDuelFinish(true);
-  let nx=t; for(let k=0;k<ONL.players.length;k++){ nx=(nx+1)%ONL.players.length; if(act[nx]) break; }
-  d.turn=nx; onlBroadcast({t:"duel", d});
+  const d=ONL.duel, best=onlDuelBest(d);
+  const done = ONL.players.every((p,j)=>!onlActive(j) || d.gave[j] || d.left[j]===0 || (best!=null && d.tries[j].length>=best));
+  if(done) return onlDuelFinish(best==null);
+  onlBroadcast({t:"duel", d});
 }
-function onlDuelSkip(){ const d=ONL&&ONL.duel; if(d&&!d.over&&!onlActive(d.turn)) onlDuelAdvance(); }
+function onlDuelSkip(){ const d=ONL&&ONL.duel; if(d&&!d.over) onlDuelAdvance(); }
 function onlDuelFinish(forced){
   const d=ONL.duel; d.over=true;
-  let w=d.left.map((x,j)=>x===0?j:-1).filter(j=>j>=0);
+  const best=onlDuelBest(d);
+  let w=best==null?[]:d.left.map((x,j)=>x===0&&d.tries[j].length===best?j:-1).filter(j=>j>=0);
   if(forced&&!w.length){ const m=Math.min(...d.left); if(m<d.tgt) w=d.left.map((x,j)=>x===m?j:-1).filter(j=>j>=0); }
   d.win=w; onlAward(w); onlBroadcast({t:"duel", d}); onlBroadcast({t:"end", r:d.r, win:w, players:onlPublic(), duel:true});
 }
@@ -1178,7 +1182,8 @@ function onlHandle(m, local){
     case "final": clearInterval(ONL.nxT); ONL.retired=false; ONL.kind=null; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
     case "prog": if(m.r===ONL.r&&m.p&&typeof m.p==="object"){ ONL.prog=m.p; onlRivals(); } break;
     case "coop": if(m.c&&Array.isArray(m.c.cells)&&m.c.r===ONL.r){ ONL.coopState=m.c; if(location.hash==="#online-coop") onlineCoop(); } break;
-    case "solved": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${esc(ONL.players[m.by].n)} lo ha adivinado en ${+m.n} intento${+m.n===1?"":"s"}. ${ONL.playing?"¡Iguálalo!":""}`); break;
+    case "gaveup": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${FLAG_SVG}<span>${esc(ONL.players[m.by].n)} ${m.quit?"ha abandonado la partida":"se ha rendido"}</span>`, "flagt"); break;
+    case "solved": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${esc(ONL.players[m.by].n)} ${m.kind==="exacto"?"ha clavado el 0":"lo ha adivinado"} en ${+m.n} intento${+m.n===1?"":"s"}. ¡Iguálalo!`); break;
     case "pause": { const g=document.getElementById("gcd"); if(g){ clearInterval(ONL.nxT); g.textContent="En pausa: el anfitrión pasará de ronda"; } break; }
     case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.kind=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") onlineLobby(); else location.hash="online-sala"; break;
     case "closed": if(!local) onlLeave(typeof m.why==="string"?m.why.slice(0,80):"El anfitrión ha cerrado la sala."); break;
@@ -1253,6 +1258,8 @@ function onlineCoop(){
 }
 /* ---- barra de ronda online: tiempo por intento, rendirse, abandonar ---- */
 const TURN_S = window.FFUT_TURN || 45;
+const FLAG_SVG = '<svg class="wflag" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M5 4.5c3-1.6 5.5 1.6 8.5 0s4.5-.8 5.5-.3v8.6c-1 -.5-2.5-1.3-5.5.3s-5.5-1.6-8.5 0z" fill="currentColor"/></svg>';
+const onlFlag = quit => { if(!ONL||ONL.r<0) return; if(ONL.role==="host") onlBroadcast({t:"gaveup", r:ONL.r, by:0, quit:!!quit}); else onlSend(ONL.conn,{t:"flag", r:ONL.r, quit:!!quit}); };
 let OT = {end:0, iv:null};
 function onlBarOn(showTimer=true){
   let b=document.getElementById("obar");
@@ -1270,12 +1277,13 @@ function onlTimerReset(){
 }
 function onlTimeout(){
   if(!ONL) return;
-  if(location.hash==="#online-duelo"){ const d=ONL.duelState; if(d&&!d.over&&d.turn===ONL.me){ if(ONL.role==="host") onlDuelPick(0, d.r, -1); else onlSend(ONL.conn,{t:"pick", r:d.r, i:-1}); } return; }
+  if(location.hash==="#online-duelo"){ const d=ONL.duelState; if(d&&!d.over){ if(ONL.role==="host") onlDuelPick(0, d.r, -1); else onlSend(ONL.conn,{t:"pick", r:d.r, i:-1}); } return; }
   if(!ONL.playing) return;
   if(GAME.timeout) GAME.timeout(); else onlGiveUp();
 }
 function onlGiveUp(){
   if(!ONL) return;
+  onlFlag(false);
   if(location.hash==="#online-duelo"){ const d=ONL.duelState; if(!d||d.over) return; if(ONL.role==="host") onlDuelSurrender(0, d.r); else onlSend(ONL.conn,{t:"surr", r:d.r}); onlBarOff(); return; }
   if(!ONL.playing) return;
   if(location.hash==="#online-coop"){ ONL.playing=false; onlBarOff(); if(ONL.role==="host") onlRaceEvent(0,"out",ONL.r); else onlSend(ONL.conn,{t:"out", r:ONL.r}); showSheet("bad", `<span class="sh-ic">✕</span><div class="sh-tx"><b>Te has rendido</b><small>Esperando a los demás…</small></div>`); return; }
@@ -1285,9 +1293,9 @@ function onlQuit(){
   if(!ONL) return;
   if(!confirm(ONL.role==="host"?"¿Terminar la partida para todos y volver a la sala?":"¿Abandonar la partida y volver a la sala?")) return;
   if(ONL.role==="host") return onlAbort();
-  onlSend(ONL.conn,{t:"quit"}); ONL.retired=true; ONL.playing=false; onlBarOff(); sheetOff(); location.hash="online-sala";
+  onlFlag(true); onlSend(ONL.conn,{t:"quit"}); ONL.retired=true; ONL.playing=false; onlBarOff(); sheetOff(); location.hash="online-sala";
 }
-function onlToast(html){ let t=document.getElementById("otoast"); if(t) t.remove(); t=document.createElement("div"); t.id="otoast"; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); }, 4500); }
+function onlToast(html, cls){ let t=document.getElementById("otoast"); if(t) t.remove(); t=document.createElement("div"); t.id="otoast"; if(cls) t.className=cls; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); }, 4500); }
 function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ["duel","coop","coopvs"].includes(ONL.kind)) return; if(ONL && ONL.playing && h===ONL.game){ const tm=ONL.kind!=="reto"; onlBarOn(tm); if(tm) onlTimerReset(); else clearInterval(OT.iv); } if(ONL && h===ONL.game && (ONL.kind==="reto"||ONL.kind==="cvs")) setTimeout(onlRivals,0); }
 /* ---- pantallas ---- */
 function onlineHome(){
@@ -1327,7 +1335,7 @@ function onlineLobby(){
     <ol class="mini-rank">${ONL.players.map((p,i)=>`<li class="${i===ONL.me?"me":""} ${p.on&&!p.ret?"":"off"}"><span>${esc(p.n)}${i===0?" ★":""}${p.ret?" (retirado)":""}</span><b>${p.on?"●":"○"}</b></li>`).join("")}</ol>
     ${host?`<h3 class="ph">Rondas</h3><div class="seg">${[3,5,10].map(r=>`<button data-r="${r}" class="${r===cfg.rounds?"on":""}">${r}</button>`).join("")}</div>`:`<p class="rule">Rondas: <b>${cfg.rounds}</b></p>`}
     <h3 class="ph">A ver quién es más rápido</h3><div class="gpick">${GAMES.filter(g=>SHOUT.includes(g.id)).map(chip).join("")}</div>
-    <h3 class="ph">Duelo por turnos</h3><div class="gpick">${GAMES.filter(g=>DUEL.includes(g.id)).map(chip).join("")}</div>
+    <h3 class="ph">Duelo <small>todos a la vez · gana quien clave el 0 en menos intentos</small></h3><div class="gpick">${GAMES.filter(g=>DUEL.includes(g.id)).map(chip).join("")}</div>
     <h3 class="ph">Reto de goles <small>jugadores al azar para cada uno · gana quien lo supere con más goles</small></h3><div class="gpick">${RETO_OG.map(ochip).join("")}</div>
     <h3 class="ph">Cuadrícula <small>VS: cada uno la suya · Coop: juntos · Coop VS: juntos, puntúa quien más rellene</small></h3><div class="gpick">${CUAD_OG.map(ochip).join("")}</div>
     <div class="row" style="margin-top:18px">${host?`<button class="btn" id="go" ${ONL.players.filter(p=>p.on).length>=2&&cfg.games.length?"":"disabled"}>Empezar</button>`:`<p class="wait">Esperando a que el anfitrión empiece…</p>`}<button class="btn ghost" id="leave">Salir</button></div>`;
@@ -1345,19 +1353,23 @@ function onlineLobby(){
 function onlineDuel(){
   if(!ONL){ location.hash="online"; return; }
   const d=ONL.duelState; if(!d){ app.innerHTML=top("Duelo","")+`<p class="wait">Conectando…</p>`; return; }
-  const [cb,cf]=CARD_KIT.exacto, myTurn=!d.over&&d.turn===ONL.me;
+  const [cb,cf]=CARD_KIT.exacto, me=ONL.me, best=(()=>{ const z=d.left.map((x,j)=>x===0?(d.tries[j]||[]).length:null).filter(x=>x!=null); return z.length?Math.min(...z):null; })();
+  const myT=(d.tries[me]||[]).length, gave=d.gave&&d.gave[me], mine=!d.over && !gave && d.left[me]>0 && !(best!=null&&myT>=best);
+  const q0=document.getElementById("q"), keep=q0&&q0.value?{v:q0.value,f:document.activeElement===q0}:null;
   app.innerHTML = top("Duelo · Goles exactos", `Ronda <em>${ONL.r+1}</em>/${ONL.rounds}`) + `
-    <p class="rule">Objetivo <b>${d.tgt}</b>. Por turnos: di un jugador y se restan sus goles. Si te pasas, no cuenta pero gastas turno.</p>
-    <div class="duel d${Math.min(ONL.players.length,4)}" style="--cb:${cb};--cf:${cf}">${ONL.players.map((p,i)=>`
-      <section class="dp ${i===d.turn&&!d.over?"on":""} ${d.left[i]===0?"win":""} ${p.on?"":"off"}">
-        <header><span class="dn">${esc(p.n)}${i===ONL.me?" (tú)":""}</span><span class="ds">${(d.tries[i]||[]).length} jug.</span></header>
+    <p class="rule">Objetivo <b>${d.tgt}</b>. Todos a la vez: gana quien clave el 0 en <b>menos intentos</b>. Si te pasas, no resta pero cuenta como intento.</p>
+    <div class="duel d${Math.min(ONL.players.length,4)}" style="--cb:${cb};--cf:${cf}">${ONL.players.map((p,i)=>{ const tr=d.tries[i]||[]; return `
+      <section class="dp ${i===me?"on":""} ${d.left[i]===0?"win":""} ${p.on&&!(d.gave&&d.gave[i])?"":"off"}">
+        <header><span class="dn">${d.gave&&d.gave[i]?FLAG_SVG:""}${esc(p.n)}${i===me?" (tú)":""}</span><span class="ds">${d.gave&&d.gave[i]?"rendido":tr.length+" int."}</span></header>
         <div class="dl">${d.left[i]}</div><div class="dbar"><i style="width:${100-d.left[i]/d.tgt*100}%"></i></div>
-        <ol class="dt">${(d.tries[i]||[]).slice().reverse().map(t=>t.i<0?`<li class="x"><span>⏱ Sin tiempo</span><b>✕</b></li>`:P[t.i]?`<li class="${t.ok?"":"x"}"><span>${esc(P[t.i].n)}</span>${t.ok?`<b>−${P[t.i].g}</b>`:`<b class="ov"><span>${P[t.i].g}</span><i>✕</i></b>`}</li>`:"").join("")}</ol>
-      </section>`).join("")}</div>
-    ${d.over?"":(d.gave&&d.gave[ONL.me]?`<p class="dturn">Te has rendido en este duelo</p>`:myTurn?`<p class="dturn"><b>Te toca</b></p><div id="srch"></div>`:`<p class="dturn">Turno de <b>${esc((ONL.players[d.turn]||{}).n||"")}</b></p>`)}`;
+        <ol class="dt">${tr.slice().reverse().map(t=>t.i<0?`<li class="x"><span>⏱ Sin tiempo</span><b>✕</b></li>`:P[t.i]?`<li class="${t.ok?"":"x"}"><span>${esc(P[t.i].n)}</span>${t.ok?`<b>−${P[t.i].g}</b>`:`<b class="ov"><span>${P[t.i].g}</span><i>✕</i></b>`}</li>`:"").join("")}</ol>
+      </section>`; }).join("")}</div>
+    ${d.over?"":gave?`<p class="dturn">Te has rendido en este duelo</p>`:d.left[me]===0?`<p class="dturn"><b>¡Clavado en ${myT}!</b> Esperando a los demás…</p>`:!mine?`<p class="dturn">Ya no puedes igualar los ${best} intentos. Esperando…</p>`:`<p class="dturn">${best!=null?`Para empatar te quedan <b>${best-myT}</b> intento${best-myT===1?"":"s"}`:`Llevas <b>${myT}</b> intento${myT===1?"":"s"}`}</p><div id="srch"></div>`}`;
   document.getElementById("back").onclick=()=>{ if(confirm("¿Salir de la sala?")) onlLeave(); };
-  if(d.over || (d.gave&&d.gave[ONL.me])) onlBarOff(); else { onlBarOn(myTurn); const key=d.r+":"+d.turn+":"+d.tries.reduce((n,x)=>n+x.length,0); if(myTurn && OT.key!==key){ OT.key=key; onlTimerReset(); } if(!myTurn){ clearInterval(OT.iv); } }
-  if(myTurn) playerSearch(document.getElementById("srch"), i=>{ if(ONL.role==="host") onlDuelPick(0, d.r, i); else onlSend(ONL.conn,{t:"pick", r:d.r, i}); }, new Set(d.used));
+  if(mine){ const q=playerSearch(document.getElementById("srch"), i=>{ if(ONL.role==="host") onlDuelPick(0, d.r, i); else onlSend(ONL.conn,{t:"pick", r:d.r, i}); }, new Set((d.used&&d.used[me])||[]));
+    if(keep){ q.value=keep.v; q.dispatchEvent(new Event("input")); if(keep.f) q.focus(); } }
+  if(d.over || !mine) { if(d.over||gave) onlBarOff(); else onlBarOn(false); clearInterval(OT.iv); }
+  else { onlBarOn(true); const key=d.r+":"+myT; if(OT.key!==key){ OT.key=key; onlTimerReset(); } }
 }
 function onlineEnd(){
   sheetOff();
