@@ -519,3 +519,6 @@ body.pdone #give, body.pdone #srch, body.pdone #next{display:none}
 .sig{margin:8px 0 0;font-size:13px;color:var(--ok)}
 .sig::before{content:"● "}
 .sig.off{color:var(--near)}
+
+.ver{font:400 12px var(--meta);color:var(--mute);margin:14px 2px 0;opacity:.7}
+#ostat:empty{display:none}

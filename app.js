@@ -787,6 +787,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
+const APP_V = "27.11-c";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -809,6 +810,7 @@ function mqttConnect(url){
     c.once("error", ()=>{});
   });
 }
+const onlStatus = t => { const el=document.getElementById("ostat"); if(el) el.textContent=t; };
 const rid = n => { const a=crypto.getRandomValues(new Uint8Array(n)); return [...a].map(x=>"abcdefghijkmnpqrstuvwxyz23456789"[x%32]).join(""); };
 const onlSend = (conn, m) => { try{ if(conn && conn.open) conn.send(m); }catch(e){} };
 const onlBroadcast = m => { if(!ONL||ONL.role!=="host") return; ONL.pub("/all", m); onlHandle(m, true); };
@@ -821,7 +823,9 @@ function onlLeave(msg){
   if(location.hash==="#online") route(); else location.hash="online";
 }
 /* ---- anfitrión ---- */
-async function onlHost(name){
+async function onlHost(name){ try{ await onlHost2(name); }catch(e){ onlLeave("Error al crear la sala: "+(e&&e.message||e)); } }
+async function onlHost2(name){
+  onlStatus("Conectando con el servidor…");
   let client=null, url=null;
   for(const u of BROKERS){ try{ client=await mqttConnect(u); url=u; break; }catch(e){} }
   if(!client) return onlLeave("No hay conexión con el servidor de salas. Inténtalo en un momento.");
@@ -923,7 +927,9 @@ function onlDuelFinish(forced){
   d.win=w; onlAward(w); onlBroadcast({t:"duel", d}); onlBroadcast({t:"end", r:d.r, win:w, players:onlPublic(), duel:true});
 }
 /* ---- invitado ---- */
-async function onlJoin(name, code){
+async function onlJoin(name, code){ try{ await onlJoin2(name, code); }catch(e){ onlLeave("Error al unirse: "+(e&&e.message||e)); } }
+async function onlJoin2(name, code){
+  onlStatus("Conectando con el servidor…");
   code=String(code||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6);
   if(code.length!==6 || [...code].some(c=>!ONL_ALPHA.includes(c))) return onlLeave("Ese código no es válido. Son 6 caracteres, sin I, L, O ni 0/1.");
   let client; try{ client=await mqttConnect(brokerOf(code)); }catch(e){ return onlLeave("No hay conexión con el servidor de salas. Inténtalo en un momento."); }
@@ -941,7 +947,7 @@ async function onlJoin(name, code){
     onlHandle(m,false);
   });
   let tries=0;
-  const hello=()=>{ if(!ONL||ONL.client!==client||ONL.me!=null) return; if(++tries>8) return onlLeave("No encuentro la sala "+code+". Comprueba el código y que el anfitrión tenga la sala abierta en pantalla."); send({t:"hello", name, sig:DATA_SIG()}); setTimeout(hello, 2000); };
+  const hello=()=>{ if(!ONL||ONL.client!==client||ONL.me!=null) return; onlStatus("Buscando la sala "+code+"… ("+(tries+1)+"/15)"); if(++tries>15) return onlLeave("No encuentro la sala "+code+". Comprueba el código y que el anfitrión tenga la sala abierta en pantalla."); send({t:"hello", name, sig:DATA_SIG()}); setTimeout(hello, 2000); };
   client.on("connect", ()=>{ if(ONL&&ONL.client===client&&ONL.me==null) send({t:"hello", name, sig:DATA_SIG()}); });
   hello();
   ONL.timer=setInterval(()=>{ if(!ONL||ONL.client!==client) return; send({t:"ping"}); if(ONL.me!=null && Date.now()-ONL.last>30000) onlLeave("Se ha perdido la conexión con la sala."); }, 4000);
@@ -1003,7 +1009,8 @@ function onlineHome(){
     <div class="row" style="margin-top:14px"><button class="btn" id="host">Crear sala</button></div>
     <h3 class="ph">Unirme con código</h3>
     <div class="pl"><input id="cd" maxlength="6" placeholder="ABC123" value="${esc(q.toUpperCase().slice(0,6))}" autocomplete="off" autocapitalize="characters" style="letter-spacing:.2em;font-family:var(--meta);font-size:22px;text-transform:uppercase"></div>
-    <div class="row" style="margin-top:10px"><button class="btn ghost" id="join">Unirme</button></div>`
+    <div class="row" style="margin-top:10px"><button class="btn ghost" id="join">Unirme</button></div>
+    <p class="wait" id="ostat" aria-live="polite"></p><p class="ver">Versión ${APP_V}</p>`
     : `<div class="res bad"><span class="ricon">!</span><div><h3>Solo en la web pública</h3><p>El online funciona en la versión publicada en internet de Formidable.fut.</p></div></div>`);
   bindBack();
   const nm=()=>{ const n=cleanName(document.getElementById("nm").value); if(!n){ document.getElementById("nm").focus(); return null; } store.set("onl-name", n); return n; };
