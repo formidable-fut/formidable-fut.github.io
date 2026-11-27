@@ -5,7 +5,7 @@ html,body{height:100%}
 body{margin:0;overflow-x:clip;-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
 a{color:inherit;-webkit-tap-highlight-color:transparent}
-.flag{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif!important;font-weight:400;font-style:normal}
+.flag{font-family:"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif!important;font-weight:400;font-style:normal}
 h1,h2,h3{margin:0}
 .fit{overflow:hidden;padding:0 .06em .1em}
 .fit-in{display:inline-block;white-space:nowrap}
@@ -525,3 +525,35 @@ body.pdone #give, body.pdone #srch, body.pdone #next{display:none}
 
 .sh-tx .ans{display:block;margin:4px 0 2px;font-size:15px}
 .sh-tx .ans strong{font:400 20px var(--hf);text-transform:uppercase;color:var(--ok)}
+
+/* online: barra de ronda */
+#obar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--card);box-shadow:0 -6px 20px -10px rgba(0,0,0,.35)}
+#obar .ot{position:relative;flex:1;height:36px;border-radius:12px;background:var(--soft);overflow:hidden;display:flex;align-items:center;justify-content:center}
+#obar .ot i{position:absolute;left:0;top:0;bottom:0;background:var(--ok);opacity:.35;transition:width .25s linear}
+#obar .ot b{position:relative;font:400 20px var(--hf)}
+#obar.hurry .ot i{background:var(--bad);opacity:.5}
+#obar.nt .ot{visibility:hidden}
+#obar button{border:0;border-radius:12px;height:36px;padding:0 12px;font:700 13px var(--ui);background:var(--soft);color:var(--ink)}
+#obar #oquit{color:var(--bad)}
+body.inonl #app{padding-bottom:90px}
+body.inonl #give{display:none!important}
+#otoast{position:fixed;top:calc(10px + env(safe-area-inset-top));left:12px;right:12px;z-index:70;max-width:560px;margin:0 auto;background:var(--ink);color:var(--bg);border-radius:16px;padding:12px 14px;font-weight:600;font-size:14.5px;text-align:center;box-shadow:0 10px 24px -10px rgba(0,0,0,.5);animation:rise .25s ease-out both}
+.nx{grid-column:1/-1;display:flex;gap:8px}
+.nx .btn:first-child{flex:1}
+.nx .pz{flex:none;padding:0 16px}
+.cdn{display:inline-grid;place-items:center;min-width:24px;height:24px;margin-left:6px;border-radius:50%;background:rgba(255,255,255,.25);font-size:13px}
+/* te pasas: se ven los goles 2 s y luego la X */
+.dt li b.ov{position:relative;display:inline-grid}
+.dt li b.ov>*{grid-area:1/1}
+.dt li b.ov span{color:var(--bad)}
+.dt li b.ov span::before{content:"+"}
+.dt li b.ov i{font-style:normal;opacity:0}
+.dt li:first-child b.ov span{animation:ovA 2.2s both}
+.dt li:first-child b.ov i{animation:ovB 2.2s both}
+.dt li:not(:first-child) b.ov span{opacity:0}
+.dt li:not(:first-child) b.ov i{opacity:1}
+@keyframes ovA{0%,85%{opacity:1}100%{opacity:0}}
+@keyframes ovB{0%,85%{opacity:0}100%{opacity:1}}
+.tries li.to{color:var(--mute)}
+
+.lnk{grid-column:1/-1;border:0;background:none;color:var(--mute);font:600 13px var(--ui);text-decoration:underline;padding:4px}

@@ -27,7 +27,7 @@ const SIL = '<svg viewBox="0 0 100 110" aria-hidden="true"><circle cx="50" cy="3
 let D = null, P = [], byClub = {}, FAM = [], CK = [];
 const app = document.getElementById("app");
 (()=>{ const d=Object.getOwnPropertyDescriptor(Element.prototype,"innerHTML"); if(!d||!d.set) return;
-  Object.defineProperty(app,"innerHTML",{configurable:true,get(){return d.get.call(this);},set(v){ const y=window.scrollY; d.set.call(this,v); if(y) window.scrollTo(0,y); }}); })();
+  Object.defineProperty(app,"innerHTML",{configurable:true,get(){return d.get.call(this);},set(v){ const y=window.scrollY; d.set.call(this,v); if(y) window.scrollTo(0,y); if(typeof onlOnRender==="function") try{ onlOnRender(); }catch(e){} }}); })();
 
 const GAMES = [
   {id:"compatriota", c:"#d7362f", s:"Mismo país, mismos clubes", ci:"#ffffff", t:"Compatriota", d:"Un jugador y dos de sus clubes. Di otro de su país que pasara por los dos.", ic:"flag"},
@@ -100,7 +100,9 @@ const clubSearch = (el, onPick, used) => makeSearch(el, CK.filter(k=>!(used&&use
 
 const streakPill = id => `Racha <em>${store.get("streak:"+id,0)}</em> · Mejor ${store.get("best:"+id,0)}`;
 const bumpStreak = (id, win) => { if(typeof partyResult==="function" && partyResult(id,win)) return; if(typeof onlineResult==="function" && onlineResult(id,win)) return; let s=store.get("streak:"+id,0); s = win ? s+1 : 0; store.set("streak:"+id,s); if(s>store.get("best:"+id,0)) store.set("best:"+id,s); };
-const triesList = (tries, why, max, done) => `<ul class="tries">${tries.map(t=>`<li class="${t.ok?"ok":""}">${esc(P[t.i].n)}${why&&t.why?` <small>${esc(t.why)}</small>`:""}</li>`).join("")}</ul>`;
+let GAME = {};
+const TO_TXT = "⏱ Se acabó el tiempo";
+const triesList = (tries, why, max, done) => `<ul class="tries">${tries.map(t=>t.i<0?`<li class="to">${TO_TXT}</li>`:`<li class="${t.ok?"ok":""}">${esc(P[t.i].n)}${why&&t.why?` <small>${esc(t.why)}</small>`:""}</li>`).join("")}</ul>`;
 
 /* ---------- portada ---------- */
 const PITCH = '<svg class="pitch" viewBox="0 0 400 260" aria-hidden="true" preserveAspectRatio="xMaxYMid slice"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="10" y="10" width="380" height="240"/><path d="M200 10v240"/><circle cx="200" cy="130" r="44"/><circle cx="200" cy="130" r="2.5" fill="currentColor"/><rect x="10" y="62" width="62" height="136"/><rect x="10" y="98" width="22" height="64"/><rect x="328" y="62" width="62" height="136"/><rect x="368" y="98" width="22" height="64"/><path d="M72 104a32 32 0 0 1 0 52M328 104a32 32 0 0 0 0 52"/></g></svg>';
@@ -217,6 +219,7 @@ function pairGame(mode){
     } else playerSearch(document.getElementById("srch"), pick, new Set(st.tries.map(t=>t.i)), mode==="compatriota");
     on("next",()=>{ st=gen(); render(); });
     on("give",()=>{ st.done=true; st.win=false; bumpStreak(id,false); render(); });
+    GAME = {id, timeout(){ if(st.done) return; st.tries.push({i:-1, ok:false}); if(st.tries.length>=3){ st.done=true; st.win=false; bumpStreak(id,false); } render(); }};
   };
   const pick = i => {
     const q=P[i], p=P[st.pi]; const ok = st.ans.has(i); let why="¡Correcto!";
@@ -363,9 +366,10 @@ function guessGame(cfg){
     else playerSearch(document.getElementById("srch"), pick, new Set(st.tries.map(t=>t.i)));
     on("next",()=>{ st=fresh(); render(); });
     on("give",()=>{ st.done=true; st.win=false; bumpStreak(cfg.id,false); render(); });
+    GAME = {id:cfg.id, timeout(){ if(st.done) return; st.tries.push({i:-1, ok:false}); if(typeof onlAttempt==="function") onlAttempt(cfg.id, st.tries.length, false); if(st.tries.length>=cfg.max){ st.done=true; st.win=false; bumpStreak(cfg.id,false); } render(); }};
   };
   const pick = i => {
-    const ok = i===st.ti; st.tries.push({i, ok});
+    const ok = i===st.ti; st.tries.push({i, ok}); if(typeof onlAttempt==="function") onlAttempt(cfg.id, st.tries.length, ok);
     if(ok){ st.done=true; st.win=true; bumpStreak(cfg.id,true); }
     else if(st.tries.length>=cfg.max){ st.done=true; st.win=false; bumpStreak(cfg.id,false); }
     render();
@@ -447,11 +451,12 @@ function impostor(){
       `<p class="rule">Cinco de estos jugadores comparten algo. Toca al que <b>no</b> encaja. Un solo intento.</p>
       <div class="opts" id="imp">${st.opts.map(i=>{ const p=P[i]; const cls = done ? (i===st.odd?"ok":(i===st.pick?"bad":"")) : "";
         return `<button class="opt ${cls}" data-i="${i}" ${done?"disabled":""}>${esc(p.n)}<small>${done?st.c.v(p):flagOf(p)}</small></button>`; }).join("")}</div>
-      <div style="margin-top:14px">${done?resBox(win, win?"¡Pillado!":"Ese no era", `${esc(st.c.label)}… menos ${esc(P[st.odd].n)}.`):""}</div>
+      <div style="margin-top:14px">${done?resBox(win, win?"¡Pillado!":(st.rev?"Te lo han pisado":"Ese no era"), `${esc(st.c.label)}… menos ${esc(P[st.odd].n)}.`):""}</div>
       <div class="row">${done?`<button class="btn" id="next">Siguiente</button>`:""}</div>`;
     bindBack();
     app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{ st.pick=+b.dataset.i; LAST_PICK=(b.childNodes[0]&&b.childNodes[0].textContent||b.textContent||"").trim(); bumpStreak(id, st.pick===st.odd); render(); });
     on("next",()=>{ st=gen(); render(); });
+    GAME = {id, reveal(){ if(st.pick==null){ st.pick=-1; st.rev=true; render(); } }};
   };
   st=gen(); render();
 }
@@ -614,7 +619,7 @@ function colores(){
       `<p class="rule">${st.one?"Un solo color: di un equipo que se identifique <b>solo con este color</b> (como el Liverpool con el rojo).":"Di un equipo que tenga <b>estos dos colores</b> como seña de identidad."} Cuenta el color base: celeste vale como azul. Tres intentos.</p>
       <div class="board"><div class="colors" style="${st.one?"grid-template-columns:minmax(0,1fr)":""}">${st.cs.map(c=>`<div style="background:${COL[c]};color:${["blanco","amarillo","rosa"].includes(c)?"#111":"#fff"}">${c[0].toUpperCase()+c.slice(1)}</div>`).join("")}</div></div>
       <div id="res"></div><div id="srch"></div>
-      <ul class="ctries">${st.tries.map((t,j)=>{ const cols=baseCols(t.k), solo=soloCol(t.k);
+      <ul class="ctries">${st.tries.map((t,j)=>{ if(t.k==null) return `<li class="bad to"><span></span><div><b>${TO_TXT}</b></div><span class="cmark">✗</span></li>`; const cols=baseCols(t.k), solo=soloCol(t.k);
         const light=c=>["blanco","amarillo","rosa","celeste","dorado"].includes(c);
         const seg=(c,hit,label)=>`<i class="${hit?"hit":"miss"}" style="background:${COL[c]||"#888"};color:${light(c)?"#111":"#fff"}"><em>${label}</em><u>${hit?"✓":"✕"}</u></i>`;
         const chips = `<span class="scarf">${st.one ? (solo?seg(solo,solo===st.cs[0],"Solo "+solo):cols.map(c=>seg(c,false,c)).join("")) : cols.map(c=>seg(c,colHit(t.k,c,st.cs),c)).join("")}</span>${st.one&&!solo?`<span class="scnote">Sin color único</span>`:""}`;
@@ -622,9 +627,10 @@ function colores(){
       <div class="row" style="margin-top:14px">${st.done?`<button class="btn" id="next">Siguiente</button>`:`<button class="btn ghost" id="give">Me rindo</button>`}</div>`;
     bindBack();
     if(st.done){ const o=shuffle([...st.ans].filter(k=>!st.tries.some(t=>t.k===k))); document.getElementById("res").innerHTML = resBox(st.win, st.win?"¡Bien visto!":"Fallado", st.win?"":(o.length?`Por ejemplo, valía ${esc(clubN(o[0]))}.`:"")); }
-    else clubSearch(document.getElementById("srch"), k=>{ const ok=st.ans.has(k); st.tries.push({k,ok}); if(ok){st.done=true;st.win=true;bumpStreak(id,true);} else if(st.tries.length>=3){st.done=true;st.win=false;bumpStreak(id,false);} render(); }, new Set(st.tries.map(t=>t.k)));
+    else clubSearch(document.getElementById("srch"), k=>{ const ok=st.ans.has(k); st.tries.push({k,ok}); if(ok){st.done=true;st.win=true;bumpStreak(id,true);} else if(st.tries.length>=3){st.done=true;st.win=false;bumpStreak(id,false);} render(); }, new Set(st.tries.map(t=>t.k).filter(Boolean)));
     on("next",()=>{ st=gen(); render(); });
     on("give",()=>{ st.done=true; st.win=false; bumpStreak(id,false); render(); });
+    GAME = {id, timeout(){ if(st.done) return; st.tries.push({k:null, ok:false}); if(st.tries.length>=3){ st.done=true; st.win=false; bumpStreak(id,false); } render(); }};
   };
   st=gen(); render();
 }
@@ -641,7 +647,15 @@ const saveParty = () => store.set("party", PARTY);
 const partyOn = () => PARTY && PARTY.active;
 const curGame = () => GAMES.find(g=>g.id===PARTY.order[PARTY.r]);
 const sheetOff = () => { const s=document.getElementById("sheet"); if(s) s.remove(); document.body.classList.remove("pdone"); };
-const nextRound = () => { sheetOff(); PARTY.r++; PARTY.playing=false; saveParty(); location.hash = PARTY.r>=PARTY.rounds ? "fiesta-fin" : "fiesta-turno"; };
+const armNext = () => {
+  const b=document.getElementById("shgo"); if(!b) return; clearInterval(window.LNX); let left=5;
+  b.insertAdjacentHTML("beforeend", ` <span class="cdn">${left}</span>`);
+  const wrap=document.createElement("div"); wrap.className="nx"; b.parentNode.insertBefore(wrap,b); wrap.appendChild(b);
+  const pz=document.createElement("button"); pz.className="btn ghost pz"; pz.textContent="⏸"; pz.setAttribute("aria-label","Pausar"); wrap.appendChild(pz);
+  window.LNX=setInterval(()=>{ left--; const c=b.querySelector(".cdn"); if(c) c.textContent=left; if(left<=0){ clearInterval(window.LNX); b.click(); } }, 1000);
+  pz.onclick=()=>{ clearInterval(window.LNX); const c=b.querySelector(".cdn"); if(c) c.remove(); pz.disabled=true; pz.textContent="⏸ En pausa"; };
+};
+const nextRound = () => { clearInterval(window.LNX); sheetOff(); PARTY.r++; PARTY.playing=false; saveParty(); location.hash = PARTY.r>=PARTY.rounds ? "fiesta-fin" : "fiesta-turno"; };
 const showSheet = (cls, html) => { sheetOff(); document.body.classList.add("pdone"); const d=document.createElement("div"); d.id="sheet"; d.className="sheet "+cls; d.innerHTML=`<div class="sh-bg"></div><div class="sh-in">${html}</div>`; document.body.appendChild(d); return d; };
 const award = (idxs) => { idxs.forEach(i=>{ PARTY.players[i].s++; }); PARTY.players.forEach((p,i)=>p.h.push(idxs.includes(i)?1:0)); saveParty(); };
 const partyResult = (id, win) => {
@@ -654,11 +668,11 @@ const partyResult = (id, win) => {
         <div class="who">${PARTY.players.map((p,i)=>`<button data-w="${i}">${esc(p.n)}</button>`).join("")}</div>`);
       d.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>{ award([+b.dataset.w]); const p=PARTY.players[+b.dataset.w];
         showSheet("ok", `<span class="sh-ic">✓</span><div class="sh-tx"><b>Punto para ${esc(p.n)}</b><small>${p.s} punto${p.s===1?"":"s"}</small></div><button class="btn" id="shgo">${nxt}</button>`);
-        document.getElementById("shgo").onclick=nextRound; });
+        document.getElementById("shgo").onclick=nextRound; armNext(); });
     } else {
       award([]);
       showSheet("bad", `<span class="sh-ic">✕</span><div class="sh-tx"><b>Nadie puntúa</b><small>Esta ronda queda desierta</small></div><button class="btn" id="shgo">${nxt}</button>`);
-      document.getElementById("shgo").onclick=nextRound;
+      document.getElementById("shgo").onclick=nextRound; armNext();
     }
   }, 250);
   return true;
@@ -731,7 +745,7 @@ function partyDuel(){
           <header><span class="dn">${esc(p.n)}</span><span class="ds">${steps(i)} jug.</span></header>
           <div class="dl">${st.left[i]}</div>
           <div class="dbar"><i style="width:${100-st.left[i]/st.tgt*100}%"></i></div>
-          <ol class="dt">${st.tries[i].slice().reverse().map(t=>`<li class="${t.ok?"":"x"}"><span>${esc(P[t.i].n)}</span><b>${t.ok?"−"+P[t.i].g:"✕"}</b></li>`).join("")}</ol>
+          <ol class="dt">${st.tries[i].slice().reverse().map(t=>`<li class="${t.ok?"":"x"}"><span>${esc(P[t.i].n)}</span>${t.ok?`<b>−${P[t.i].g}</b>`:`<b class="ov"><span>${P[t.i].g}</span><i>✕</i></b>`}</li>`).join("")}</ol>
         </section>`).join("")}</div>
       ${st.over?"":`<p class="dturn">Turno de <b>${esc(PARTY.players[st.turn].n)}</b></p><div id="srch"></div>
       <div class="row" style="margin-top:12px"><button class="btn ghost" id="give">Terminar duelo</button></div>`}`;
@@ -746,7 +760,7 @@ function partyDuel(){
     PARTY.playing=false; award(winners); const last=PARTY.r===PARTY.rounds-1;
     const names=winners.map(i=>esc(PARTY.players[i].n)).join(" y ");
     showSheet(winners.length?"ok":"bad", `<span class="sh-ic">${winners.length?"✓":"✕"}</span><div class="sh-tx"><b>${winners.length?`Punto para ${names}`:"Nadie puntúa"}</b><small>${winners.length&&!forced?`Clavado con ${steps(winners[0])} jugador${steps(winners[0])===1?"":"es"}`:winners.length?"El más cerca del 0":"Duelo sin ganador"}</small></div><button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"}</button>`);
-    document.getElementById("shgo").onclick=nextRound;
+    document.getElementById("shgo").onclick=nextRound; armNext();
   };
   const pick = i => {
     const t=st.turn, g=P[i].g, ok=g<=st.left[t];
@@ -789,7 +803,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-d";
+const APP_V = "27.11-e";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -816,7 +830,9 @@ const onlStatus = t => { const el=document.getElementById("ostat"); if(el) el.te
 const rid = n => { const a=crypto.getRandomValues(new Uint8Array(n)); return [...a].map(x=>"abcdefghijkmnpqrstuvwxyz23456789"[x%32]).join(""); };
 const onlSend = (conn, m) => { try{ if(conn && conn.open) conn.send(m); }catch(e){} };
 const onlBroadcast = m => { if(!ONL||ONL.role!=="host") return; ONL.pub("/all", m); onlHandle(m, true); };
-const onlPublic = () => ONL.players.map(p=>({n:p.n, s:p.s, on:p.on, h:p.h}));
+const onlPublic = () => ONL.players.map(p=>({n:p.n, s:p.s, on:p.on, h:p.h, ret:!!p.ret}));
+const ATT = ["oculto"];
+const onlActive = i => { const p=ONL.players[i]; return p && p.on && !p.ret; };
 function onlLeave(msg){
   if(ONL){ try{ if(ONL.role==="host") ONL.pub("/all",{t:"closed"}); else if(ONL.conn) ONL.conn.send({t:"bye"}); }catch(e){}
     const c=ONL.client, tm=ONL.timer; clearInterval(tm); setTimeout(()=>{ try{ c&&c.end(true); }catch(e){} }, 300); }
@@ -873,6 +889,9 @@ function onlHostRecv(conn, m){
   const i=conn._pidx; if(i==null) return;
   if(m.t==="win"||m.t==="out") return onlRaceEvent(i, m.t, m.r, cleanAns(m.a));
   if(m.t==="pick") return onlDuelPick(i, m.r, m.i);
+  if(m.t==="try") return onlAttemptEvent(i, m.r, m.n, !!m.ok, cleanAns(m.a));
+  if(m.t==="surr") return onlDuelSurrender(i, m.r);
+  if(m.t==="quit") return onlRetire(i);
   if(m.t==="bye") return conn.close();
 }
 function onlStart(){
@@ -885,43 +904,80 @@ function onlStart(){
 function onlNextRound(r){
   if(r>=ONL.cfg.rounds) return onlBroadcast({t:"final", players:onlPublic()});
   const game=ONL.order[r], seed=mkSeed();
-  ONL.round={r, game, out:new Set(), over:false};
+  ONL.round={r, game, out:new Set(ONL.players.map((p,i)=>p.ret?i:-1).filter(i=>i>=0)), over:false, att:{}};
   if(DUEL.includes(game)){
     const rng=mulberry(seed), sc=P.map((p,i)=>i).filter(i=>P[i].g>0); let tgt;
     const sh=a=>{ a=a.slice(); for(let j=a.length-1;j>0;j--){ const k=Math.floor(rng()*(j+1)); [a[j],a[k]]=[a[k],a[j]]; } return a; };
     for(;;){ const k=3+Math.floor(rng()*3); tgt=sh(sc).slice(0,k).reduce((s,i)=>s+P[i].g,0); if(tgt>=300&&tgt<=1200) break; }
     const on=ONL.players.map(p=>p.on);
-    ONL.duel={r, tgt, left:ONL.players.map(()=>tgt), tries:ONL.players.map(()=>[]), used:[], turn:on.indexOf(true), over:false, win:[]};
+    const act0=ONL.players.map((p,i)=>onlActive(i));
+    ONL.duel={r, tgt, left:ONL.players.map(()=>tgt), tries:ONL.players.map(()=>[]), used:[], turn:act0.indexOf(true), over:false, win:[], gave:ONL.players.map(p=>!!p.ret)};
     onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
     onlBroadcast({t:"duel", d:ONL.duel});
   } else onlBroadcast({t:"round", r, rounds:ONL.cfg.rounds, game, seed, players:onlPublic()});
 }
 function onlRaceEvent(i, kind, r, a){
   const R=ONL.round; if(!R || R.over || r!==R.r || DUEL.includes(R.game)) return;
-  if(kind==="win"){ R.over=true; onlAward([i]); onlBroadcast({t:"end", r, win:[i], ans:a||"", players:onlPublic()}); }
-  else { R.out.add(i); onlCheckRaceEnd(); }
+  if(kind==="win" && !ATT.includes(R.game)){ R.over=true; onlAward([i]); onlBroadcast({t:"end", r, win:[i], ans:a||"", players:onlPublic()}); }
+  else if(kind!=="win"){ R.out.add(i); onlCheckRaceEnd(); }
+}
+function onlAttemptEvent(i, r, n, ok, a){
+  const R=ONL.round; if(!R || R.over || r!==R.r || !ATT.includes(R.game) || !Number.isInteger(n) || n<1 || n>12) return;
+  const t=R.att[i]||(R.att[i]={n:0, solved:null, a:""}); if(t.solved!=null) return;
+  t.n=Math.max(t.n,n);
+  if(ok){ t.solved=n; t.a=a; const best=Math.min(...Object.values(R.att).filter(x=>x.solved!=null).map(x=>x.solved));
+    if(best===n) onlBroadcast({t:"solved", r, by:i, n}); }
+  onlCheckRaceEnd();
 }
 function onlCheckRaceEnd(){
   const R=ONL&&ONL.round; if(!R||R.over||DUEL.includes(R.game)) return;
-  if(ONL.players.every((p,i)=>!p.on||R.out.has(i))){ R.over=true; onlAward([]); onlBroadcast({t:"end", r:R.r, win:[], players:onlPublic()}); }
+  if(ATT.includes(R.game)){
+    const sol=Object.entries(R.att).filter(([,x])=>x.solved!=null), best=sol.length?Math.min(...sol.map(([,x])=>x.solved)):null;
+    const done=ONL.players.every((p,i)=>{ if(!onlActive(i)||R.out.has(i)) return true; const t=R.att[i]; return t && (t.solved!=null || (best!=null && t.n>=best)); });
+    if(!done) return;
+    R.over=true; const w=sol.filter(([,x])=>x.solved===best).map(([k])=>+k); const first=w.length?R.att[w[0]]:null;
+    onlAward(w); onlBroadcast({t:"end", r:R.r, win:w, ans:first?first.a:"", tries:best, players:onlPublic()});
+    return;
+  }
+  if(ONL.players.every((p,i)=>!onlActive(i)||R.out.has(i))){ R.over=true; onlAward([]); onlBroadcast({t:"end", r:R.r, win:[], players:onlPublic()}); }
+}
+function onlRetire(i){
+  const p=ONL.players[i]; if(!p||p.ret) return; p.ret=true;
+  if(ONL.round&&!ONL.round.over){ ONL.round.out.add(i); }
+  onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg});
+  if(ONL.duel&&!ONL.duel.over) onlDuelSurrender(i, ONL.duel.r); else onlCheckRaceEnd();
+}
+function onlAbort(){
+  if(!ONL||ONL.role!=="host") return;
+  ONL.started=false; ONL.round=null; ONL.duel=null; ONL.r=-1; ONL.players.forEach(p=>{p.s=0;p.h=[];p.ret=false;});
+  onlBroadcast({t:"abort", players:onlPublic(), cfg:ONL.cfg});
 }
 const onlAward = w => ONL.players.forEach((p,i)=>{ if(w.includes(i)) p.s++; p.h.push(w.includes(i)?1:0); });
 function onlDuelPick(i, r, pi){
   const d=ONL.duel; if(!d||d.over||r!==d.r||i!==d.turn) return;
+  if(pi===-1){ d.tries[i].push({i:-1, ok:false}); return onlDuelAdvance(); }
   if(!Number.isInteger(pi)||pi<0||pi>=P.length||d.used.includes(pi)) return;
   const g=P[pi].g, ok=g<=d.left[i]; d.used.push(pi); d.tries[i].push({i:pi, ok}); if(ok) d.left[i]-=g;
   onlDuelAdvance();
 }
+function onlDuelSurrender(i, r){
+  const d=ONL.duel; if(!d||d.over||r!==d.r||d.gave[i]) return;
+  d.gave[i]=true;
+  const alive=ONL.players.map((p,j)=>j).filter(j=>onlActive(j)&&!d.gave[j]);
+  if(alive.length===1 && ONL.players.filter((p,j)=>p.on).length>1){ d.over=true; d.win=alive; onlAward(alive); onlBroadcast({t:"duel", d}); return onlBroadcast({t:"end", r:d.r, win:alive, players:onlPublic(), duel:true, why:"rendición"}); }
+  if(!alive.length) return onlDuelFinish(true);
+  if(d.turn===i) onlDuelAdvance(); else onlBroadcast({t:"duel", d});
+}
 function onlDuelAdvance(){
-  const d=ONL.duel, act=ONL.players.map((p,j)=>p.on && d.left[j]>0);
+  const d=ONL.duel, act=ONL.players.map((p,j)=>onlActive(j) && !d.gave[j] && d.left[j]>0);
   const steps=j=>d.tries[j].length, t=d.turn;
-  const roundDone = ONL.players.every((p,j)=>!p.on || d.left[j]===0 || steps(j)>=steps(t));
+  const roundDone = ONL.players.every((p,j)=>!onlActive(j) || d.gave[j] || d.left[j]===0 || steps(j)>=steps(t));
   if(roundDone && d.left.some(x=>x===0)) return onlDuelFinish(false);
   if(!act.some(Boolean)) return onlDuelFinish(true);
   let nx=t; for(let k=0;k<ONL.players.length;k++){ nx=(nx+1)%ONL.players.length; if(act[nx]) break; }
   d.turn=nx; onlBroadcast({t:"duel", d});
 }
-function onlDuelSkip(){ const d=ONL&&ONL.duel; if(d&&!d.over&&ONL.players[d.turn]&&!ONL.players[d.turn].on) onlDuelAdvance(); }
+function onlDuelSkip(){ const d=ONL&&ONL.duel; if(d&&!d.over&&!onlActive(d.turn)) onlDuelAdvance(); }
 function onlDuelFinish(forced){
   const d=ONL.duel; d.over=true;
   let w=d.left.map((x,j)=>x===0?j:-1).filter(j=>j>=0);
@@ -965,38 +1021,95 @@ function onlHandle(m, local){
   const okPlayers = a => Array.isArray(a) && a.length<=16 && a.every(p=>p&&typeof p.n==="string"&&Number.isInteger(p.s));
   switch(m.t){
     case "welcome": if(Number.isInteger(m.you)) ONL.me=m.you; location.hash="online-sala"; break;
-    case "lobby": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,h:Array.isArray(p.h)?p.h:[]})); if(m.cfg&&ONL.role==="guest"&&Array.isArray(m.cfg.games)) ONL.cfg={rounds:+m.cfg.rounds||5, games:m.cfg.games.filter(g=>GAMES.some(x=>x.id===g))};
+    case "lobby": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:Array.isArray(p.h)?p.h:[]})); if(m.cfg&&ONL.role==="guest"&&Array.isArray(m.cfg.games)) ONL.cfg={rounds:+m.cfg.rounds||5, games:m.cfg.games.filter(g=>GAMES.some(x=>x.id===g))};
       if(ONL.role==="guest"&&location.hash==="#online-fin"){ ONL.r=-1; ONL.game=null; location.hash="online-sala"; } else if(location.hash==="#online-sala") route(); break;
     case "round": {
       if(!Number.isInteger(m.r)||!GAMES.some(g=>g.id===m.game)) return;
-      if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,h:p.h||[]}));
-      ONL.r=m.r; ONL.rounds=m.rounds; ONL.game=m.game; ONL.playing=true; ONL.over=false; sheetOff();
+      if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]}));
+      clearInterval(ONL.nxT); ONL.r=m.r; ONL.rounds=m.rounds; ONL.game=m.game; ONL.over=false; sheetOff();
+      if(ONL.retired){ ONL.playing=false; if(location.hash==="#online-sala") route(); break; }
+      ONL.playing=true;
       if(DUEL.includes(m.game)){ location.hash="online-duelo"; if(location.hash==="#online-duelo") route(); }
       else { ONL_SEED=m.seed>>>0; if(location.hash.slice(1)===m.game) route(); else location.hash=m.game; }
       break; }
     case "duel": if(m.d&&Array.isArray(m.d.left)){ ONL.duelState=m.d; if(location.hash==="#online-duelo") route(); } break;
     case "end": {
-      if(m.r!==ONL.r) return; ONL.playing=false; ONL.over=true;
-      if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,h:p.h||[]}));
+      if(m.r!==ONL.r) return; ONL.playing=false; ONL.over=true; onlBarOff();
+      if(GAME.reveal && location.hash.slice(1)===ONL.game) GAME.reveal();
+      if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]}));
       const w=(Array.isArray(m.win)?m.win:[]).filter(i=>ONL.players[i]), names=w.map(i=>esc(ONL.players[i].n)).join(" y ");
       const mine=w.includes(ONL.me), last=ONL.r>=ONL.rounds-1;
       setTimeout(()=>{ const d=showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?(mine&&w.length===1?"¡Punto para ti!":`Punto para ${names}`):"Nadie puntúa"}</b>${m.ans&&!mine?`<span class="ans">Ha dicho <strong>${esc(cleanAns(m.ans))}</strong></span>`:""}<small>${ONL.players.map(p=>`${esc(p.n)} ${p.s}`).join(" · ")}</small></div>
-        ${ONL.role==="host"?`<button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"}</button>`:`<p class="wait">Esperando al anfitrión…</p>`}`);
-        const b=document.getElementById("shgo"); if(b) b.onclick=()=>{ b.disabled=true; onlNextRound(ONL.r+1); }; }, m.duel?600:250);
+        ${ONL.role==="host"?`<div class="nx"><button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"} <span id="cdn">5</span></button><button class="btn ghost pz" id="pz" aria-label="Pausar">⏸</button></div><button class="lnk" id="abort">Terminar partida y volver a la sala</button>`:`<p class="wait" id="gcd">${last?"Clasificación":"Siguiente ronda"} en 5…</p>`}`);
+        clearInterval(ONL.nxT); let left=5;
+        const b=document.getElementById("shgo"), go=()=>{ clearInterval(ONL.nxT); if(b) b.disabled=true; onlNextRound(ONL.r+1); };
+        ONL.nxT=setInterval(()=>{ left--; const c=document.getElementById("cdn"), g=document.getElementById("gcd"); if(c) c.textContent=left; if(g) g.textContent=`${last?"Clasificación":"Siguiente ronda"} en ${Math.max(0,left)}…`; if(left<=0){ clearInterval(ONL.nxT); if(ONL.role==="host") go(); } }, 1000);
+        if(b) b.onclick=go;
+        const ab=document.getElementById("abort"); if(ab) ab.onclick=()=>{ clearInterval(ONL.nxT); if(confirm("¿Terminar la partida para todos y volver a la sala?")) onlAbort(); };
+        const pz=document.getElementById("pz"); if(pz) pz.onclick=()=>{ clearInterval(ONL.nxT); const c=document.getElementById("cdn"); if(c) c.textContent=""; pz.disabled=true; pz.textContent="⏸ En pausa"; onlBroadcast({t:"pause"}); };
+      }, m.duel?600:250);
       break; }
-    case "final": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
+    case "final": clearInterval(ONL.nxT); ONL.retired=false; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
+    case "solved": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${esc(ONL.players[m.by].n)} lo ha adivinado en ${+m.n} intento${+m.n===1?"":"s"}. ${ONL.playing?"¡Iguálalo!":""}`); break;
+    case "pause": { const g=document.getElementById("gcd"); if(g){ clearInterval(ONL.nxT); g.textContent="En pausa: el anfitrión pasará de ronda"; } break; }
+    case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") route(); else location.hash="online-sala"; break;
     case "closed": if(!local) onlLeave(typeof m.why==="string"?m.why.slice(0,80):"El anfitrión ha cerrado la sala."); break;
   }
 }
+/* intento en un juego por intentos (Jugador oculto online) */
+const onlAttempt = (id, n, ok) => {
+  if(!ONL || !ONL.playing || id!==ONL.game || !ATT.includes(id)) return;
+  const a=ok?cleanAns(LAST_PICK):"";
+  if(ONL.role==="host") onlAttemptEvent(0, ONL.r, n, ok, a); else onlSend(ONL.conn,{t:"try", r:ONL.r, n, ok, a});
+};
 /* resultado de un juego "a gritar" en una ronda online */
 const onlineResult = (id, win) => {
   if(!ONL || !ONL.playing || id!==ONL.game) return false;
-  ONL.playing=false;
+  ONL.playing=false; onlBarOff();
   const a=win?cleanAns(LAST_PICK):""; if(ONL.role==="host") onlRaceEvent(0, win?"win":"out", ONL.r, a); else onlSend(ONL.conn,{t:win?"win":"out", r:ONL.r, a});
+  if(win && ATT.includes(id)){ setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("ok", `<span class="sh-ic">✓</span><div class="sh-tx"><b>¡Acertado!</b><small>Esperando a ver si alguien lo iguala…</small></div>`); }, 100); return true; }
   if(!win) setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("bad", `<span class="sh-ic">✕</span><div class="sh-tx"><b>Sin intentos</b><small>Esperando a que acaben los demás…</small></div>`); }, 250);
   else setTimeout(()=>{ if(ONL&&!ONL.over) showSheet("ok", `<span class="sh-ic">✓</span><div class="sh-tx"><b>¡Correcto!</b><small>Comprobando quién ha sido el primero…</small></div>`); }, 100);
   return true;
 };
+
+/* ---- barra de ronda online: tiempo por intento, rendirse, abandonar ---- */
+const TURN_S = window.FFUT_TURN || 45;
+let OT = {end:0, iv:null};
+function onlBarOn(showTimer=true){
+  let b=document.getElementById("obar");
+  if(!b){ b=document.createElement("div"); b.id="obar"; b.innerHTML=`<span class="ot"><i></i><b>${TURN_S}</b></span><button id="ogive">Rendirse</button><button id="oquit">Abandonar</button>`; document.body.appendChild(b);
+    b.querySelector("#ogive").onclick=onlGiveUp; b.querySelector("#oquit").onclick=onlQuit; }
+  b.classList.toggle("nt", !showTimer);
+}
+function onlBarOff(){ const b=document.getElementById("obar"); if(b) b.remove(); clearInterval(OT.iv); OT.iv=null; }
+function onlTimerReset(){
+  clearInterval(OT.iv); OT.end=Date.now()+TURN_S*1000;
+  const tick=()=>{ const b=document.getElementById("obar"); if(!b){ clearInterval(OT.iv); return; } const left=Math.max(0,OT.end-Date.now());
+    b.querySelector(".ot b").textContent=Math.ceil(left/1000); b.querySelector(".ot i").style.width=(left/(TURN_S*10))+"%"; b.classList.toggle("hurry", left<10000);
+    if(left<=0){ clearInterval(OT.iv); onlTimeout(); } };
+  tick(); OT.iv=setInterval(tick, 250);
+}
+function onlTimeout(){
+  if(!ONL) return;
+  if(location.hash==="#online-duelo"){ const d=ONL.duelState; if(d&&!d.over&&d.turn===ONL.me){ if(ONL.role==="host") onlDuelPick(0, d.r, -1); else onlSend(ONL.conn,{t:"pick", r:d.r, i:-1}); } return; }
+  if(!ONL.playing) return;
+  if(GAME.timeout) GAME.timeout(); else onlGiveUp();
+}
+function onlGiveUp(){
+  if(!ONL) return;
+  if(location.hash==="#online-duelo"){ const d=ONL.duelState; if(!d||d.over) return; if(ONL.role==="host") onlDuelSurrender(0, d.r); else onlSend(ONL.conn,{t:"surr", r:d.r}); onlBarOff(); return; }
+  if(!ONL.playing) return;
+  const g=document.getElementById("give"); if(g) g.click(); else bumpStreak(ONL.game,false);
+}
+function onlQuit(){
+  if(!ONL) return;
+  if(!confirm(ONL.role==="host"?"¿Terminar la partida para todos y volver a la sala?":"¿Abandonar la partida y volver a la sala?")) return;
+  if(ONL.role==="host") return onlAbort();
+  onlSend(ONL.conn,{t:"quit"}); ONL.retired=true; ONL.playing=false; onlBarOff(); sheetOff(); location.hash="online-sala";
+}
+function onlToast(html){ let t=document.getElementById("otoast"); if(t) t.remove(); t=document.createElement("div"); t.id="otoast"; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); }, 4500); }
+function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ONL.playing && h===ONL.game){ onlBarOn(true); onlTimerReset(); } }
 /* ---- pantallas ---- */
 function onlineHome(){
   sheetOff();
@@ -1029,8 +1142,9 @@ function onlineLobby(){
     <div class="code"><p class="t-k">Código de sala</p><div class="cv2">${esc(ONL.code)}</div>
       ${host?`<p class="sig ${ONL.sig===false?"off":""}">${ONL.sig===false?"Reconectando… vuelve a esta pantalla":"Sala abierta · deja esta pantalla abierta mientras se unen"}</p>`:""}
       <div class="row" style="justify-content:center;gap:8px;margin-top:10px"><button class="btn ghost" id="copy">Copiar enlace</button>${navigator.share?`<button class="btn ghost" id="share">Compartir</button>`:""}</div></div>
+    ${ONL.retired?`<div class="res bad"><span class="ricon">!</span><div><h3>Te has retirado</h3><p>Esperando a que termine la partida. Podrás jugar la siguiente.</p></div></div>`:""}
     <h3 class="ph">Jugadores <small>${ONL.players.filter(p=>p.on).length}/8</small></h3>
-    <ol class="mini-rank">${ONL.players.map((p,i)=>`<li class="${i===ONL.me?"me":""} ${p.on?"":"off"}"><span>${esc(p.n)}${i===0?" ★":""}</span><b>${p.on?"●":"○"}</b></li>`).join("")}</ol>
+    <ol class="mini-rank">${ONL.players.map((p,i)=>`<li class="${i===ONL.me?"me":""} ${p.on&&!p.ret?"":"off"}"><span>${esc(p.n)}${i===0?" ★":""}${p.ret?" (retirado)":""}</span><b>${p.on?"●":"○"}</b></li>`).join("")}</ol>
     ${host?`<h3 class="ph">Rondas</h3><div class="seg">${[3,5,10].map(r=>`<button data-r="${r}" class="${r===cfg.rounds?"on":""}">${r}</button>`).join("")}</div>`:`<p class="rule">Rondas: <b>${cfg.rounds}</b></p>`}
     <h3 class="ph">A ver quién es más rápido</h3><div class="gpick">${GAMES.filter(g=>SHOUT.includes(g.id)).map(chip).join("")}</div>
     <h3 class="ph">Duelo por turnos</h3><div class="gpick">${GAMES.filter(g=>DUEL.includes(g.id)).map(chip).join("")}</div>
@@ -1056,10 +1170,11 @@ function onlineDuel(){
       <section class="dp ${i===d.turn&&!d.over?"on":""} ${d.left[i]===0?"win":""} ${p.on?"":"off"}">
         <header><span class="dn">${esc(p.n)}${i===ONL.me?" (tú)":""}</span><span class="ds">${(d.tries[i]||[]).length} jug.</span></header>
         <div class="dl">${d.left[i]}</div><div class="dbar"><i style="width:${100-d.left[i]/d.tgt*100}%"></i></div>
-        <ol class="dt">${(d.tries[i]||[]).slice().reverse().map(t=>P[t.i]?`<li class="${t.ok?"":"x"}"><span>${esc(P[t.i].n)}</span><b>${t.ok?"−"+P[t.i].g:"✕"}</b></li>`:"").join("")}</ol>
+        <ol class="dt">${(d.tries[i]||[]).slice().reverse().map(t=>t.i<0?`<li class="x"><span>⏱ Sin tiempo</span><b>✕</b></li>`:P[t.i]?`<li class="${t.ok?"":"x"}"><span>${esc(P[t.i].n)}</span>${t.ok?`<b>−${P[t.i].g}</b>`:`<b class="ov"><span>${P[t.i].g}</span><i>✕</i></b>`}</li>`:"").join("")}</ol>
       </section>`).join("")}</div>
-    ${d.over?"":(myTurn?`<p class="dturn"><b>Te toca</b></p><div id="srch"></div>`:`<p class="dturn">Turno de <b>${esc((ONL.players[d.turn]||{}).n||"")}</b></p>`)}`;
+    ${d.over?"":(d.gave&&d.gave[ONL.me]?`<p class="dturn">Te has rendido en este duelo</p>`:myTurn?`<p class="dturn"><b>Te toca</b></p><div id="srch"></div>`:`<p class="dturn">Turno de <b>${esc((ONL.players[d.turn]||{}).n||"")}</b></p>`)}`;
   document.getElementById("back").onclick=()=>{ if(confirm("¿Salir de la sala?")) onlLeave(); };
+  if(d.over || (d.gave&&d.gave[ONL.me])) onlBarOff(); else { onlBarOn(myTurn); const key=d.r+":"+d.turn+":"+d.tries.reduce((n,x)=>n+x.length,0); if(myTurn && OT.key!==key){ OT.key=key; onlTimerReset(); } if(!myTurn){ clearInterval(OT.iv); } }
   if(myTurn) playerSearch(document.getElementById("srch"), i=>{ if(ONL.role==="host") onlDuelPick(0, d.r, i); else onlSend(ONL.conn,{t:"pick", r:d.r, i}); }, new Set(d.used));
 }
 function onlineEnd(){
@@ -1078,7 +1193,7 @@ function onlineEnd(){
 }
 
 const ROUTES = {online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
-const route = () => { const h=location.hash.slice(1); const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
+const route = () => { const h=location.hash.slice(1); GAME={}; const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); const inO=!!(ONL&&((h===ONL.game&&(ONL.playing||ONL.over))||h==="online-duelo")); document.body.classList.toggle("inonl", inO); if(!inO&&typeof onlBarOff==="function") onlBarOff(); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
 
 fetch("data.json",{cache:"no-cache"}).then(r=>r.json()).then(d=>{
   D=d; P=d.players; CK=Object.keys(d.clubs);
