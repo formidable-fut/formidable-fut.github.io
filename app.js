@@ -1016,7 +1016,7 @@ function onlineEnd(){
 const ROUTES = {online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
 const route = () => { const h=location.hash.slice(1); const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
 
-fetch("data.json").then(r=>r.json()).then(d=>{
+fetch("data.json",{cache:"no-cache"}).then(r=>r.json()).then(d=>{
   D=d; P=d.players; CK=Object.keys(d.clubs);
   P.forEach((p,i)=>{ p._k=[norm(p.n), ...(p.al||[]).map(norm)]; p.c.forEach(c=>(byClub[c]=byClub[c]||new Set()).add(i)); });
   FAM = P.map((p,i)=>i).filter(i=>{ const p=P[i]; return p.g>=80 || p.t>=10 || p.pj>=550; });
