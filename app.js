@@ -860,7 +860,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-p";
+const APP_V = "27.11-q";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -902,7 +902,7 @@ const onlActive = i => { const p=ONL.players[i]; return p && p.on && !p.ret; };
 function onlLeave(msg){
   if(ONL){ try{ if(ONL.role==="host") ONL.pub("/all",{t:"closed"}); else if(ONL.conn) ONL.conn.send({t:"bye"}); }catch(e){}
     const c=ONL.client, tm=ONL.timer; clearInterval(tm); setTimeout(()=>{ try{ c&&c.end(true); }catch(e){} }, 300); }
-  ONL=null; document.body.classList.remove("inparty"); sheetOff();
+  ONL=null; document.body.classList.remove("inparty"); sheetOff(); const gb=document.getElementById("ogave"); if(gb) gb.remove();
   if(msg) store.set("onl-msg", msg);
   if(location.hash==="#online") route(); else location.hash="online";
 }
@@ -1155,7 +1155,7 @@ function onlHandle(m, local){
     case "round": {
       if(!Number.isInteger(m.r)||!OG[m.game]) return;
       if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]}));
-      const M=OG[m.game]; clearInterval(ONL.nxT); ONL.r=m.r; ONL.rounds=m.rounds; ONL.og=m.game; ONL.kind=M.kind; ONL.game=M.route; ONL.retoLv=M.lv; ONL.myDone=false; ONL.prog={}; ONL.mySel=null; ONL.over=false; sheetOff();
+      const M=OG[m.game]; ONL.gave=[]; onlGaveBadge(); clearInterval(ONL.nxT); ONL.r=m.r; ONL.rounds=m.rounds; ONL.og=m.game; ONL.kind=M.kind; ONL.game=M.route; ONL.retoLv=M.lv; ONL.myDone=false; ONL.prog={}; ONL.mySel=null; ONL.over=false; sheetOff();
       if(ONL.retired){ ONL.playing=false; if(location.hash==="#online-sala") onlineLobby(); break; }
       ONL.playing=true;
       if(M.kind==="duel"){ location.hash="online-duelo"; if(location.hash==="#online-duelo") route(); }
@@ -1182,7 +1182,7 @@ function onlHandle(m, local){
     case "final": clearInterval(ONL.nxT); ONL.retired=false; ONL.kind=null; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;
     case "prog": if(m.r===ONL.r&&m.p&&typeof m.p==="object"){ ONL.prog=m.p; onlRivals(); } break;
     case "coop": if(m.c&&Array.isArray(m.c.cells)&&m.c.r===ONL.r){ ONL.coopState=m.c; if(location.hash==="#online-coop") onlineCoop(); } break;
-    case "gaveup": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${FLAG_SVG}<span>${esc(ONL.players[m.by].n)} ${m.quit?"ha abandonado la partida":"se ha rendido"}</span>`, "flagt"); break;
+    case "gaveup": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]){ ONL.gave=ONL.gave||[]; if(!ONL.gave.includes(m.by)) ONL.gave.push(m.by); onlGaveBadge(); } if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${FLAG_SVG}<span>${esc(ONL.players[m.by].n)} ${m.quit?"ha abandonado la partida":"se ha rendido"}</span>`, "flagt"); break;
     case "solved": if(m.r===ONL.r && m.by!==ONL.me && ONL.players[m.by]) onlToast(`${esc(ONL.players[m.by].n)} ${m.kind==="exacto"?"ha clavado el 0":"lo ha adivinado"} en ${+m.n} intento${+m.n===1?"":"s"}. ¡Iguálalo!`); break;
     case "pause": { const g=document.getElementById("gcd"); if(g){ clearInterval(ONL.nxT); g.textContent="En pausa: el anfitrión pasará de ronda"; } break; }
     case "abort": if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); clearInterval(ONL.nxT); ONL.r=-1; ONL.game=null; ONL.kind=null; ONL.playing=false; ONL.retired=false; ONL.duelState=null; onlBarOff(); sheetOff(); if(location.hash==="#online-sala") onlineLobby(); else location.hash="online-sala"; break;
@@ -1295,6 +1295,14 @@ function onlQuit(){
   if(ONL.role==="host") return onlAbort();
   onlFlag(true); onlSend(ONL.conn,{t:"quit"}); ONL.retired=true; ONL.playing=false; onlBarOff(); sheetOff(); location.hash="online-sala";
 }
+function onlGaveBadge(){
+  let b=document.getElementById("ogave");
+  const h=location.hash.slice(1), inRound=ONL&&ONL.r>=0&&(h===ONL.game||h==="online-duelo"||h==="online-coop");
+  const list=(ONL&&ONL.gave||[]).filter(i=>ONL.players[i]);
+  if(!inRound||!list.length){ if(b) b.remove(); return; }
+  if(!b){ b=document.createElement("div"); b.id="ogave"; document.body.appendChild(b); }
+  b.innerHTML=FLAG_SVG+`<span>${list.map(i=>esc(ONL.players[i].n)).join(", ")} ${list.length>1?"se han rendido":"se ha rendido"}</span>`;
+}
 function onlToast(html, cls){ let t=document.getElementById("otoast"); if(t) t.remove(); t=document.createElement("div"); t.id="otoast"; if(cls) t.className=cls; t.innerHTML=html; document.body.appendChild(t); setTimeout(()=>{ if(t.parentNode) t.remove(); }, 4500); }
 function onlOnRender(){ const h=location.hash.slice(1); if(ONL && ["duel","coop","coopvs"].includes(ONL.kind)) return; if(ONL && ONL.playing && h===ONL.game){ const tm=ONL.kind!=="reto"; onlBarOn(tm); if(tm) onlTimerReset(); else clearInterval(OT.iv); } if(ONL && h===ONL.game && (ONL.kind==="reto"||ONL.kind==="cvs")) setTimeout(onlRivals,0); }
 /* ---- pantallas ---- */
@@ -1387,7 +1395,7 @@ function onlineEnd(){
 }
 
 const ROUTES = {"online-coop":onlineCoop, online:onlineHome, "online-sala":onlineLobby, "online-duelo":onlineDuel, "online-fin":onlineEnd, fiesta:partySetup, "fiesta-turno":partyTurn, "fiesta-duelo":partyDuel, "fiesta-reto":partyReto, "fiesta-fin":partyEnd, compatriota:()=>pairGame("compatriota"), conexion:()=>pairGame("conexion"), "reto-1000":reto, exacto, pistas, impostor, comparador, oculto, cuadricula, colores};
-const route = () => { const h=location.hash.slice(1); GAME={}; const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); const inO=!!(ONL&&((h===ONL.game&&(ONL.playing||ONL.over))||h==="online-duelo"||h==="online-coop")); document.body.classList.toggle("inonl", inO); if(!inO&&typeof onlBarOff==="function") onlBarOff(); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
+const route = () => { const h=location.hash.slice(1); GAME={}; const inP=(partyOn()&&PARTY.playing&&h===PARTY.order[PARTY.r]) || (ONL&&ONL.game===h&&(ONL.playing||ONL.over)); if(!inP) sheetOff(); document.body.classList.toggle("inparty", !!inP); const inO=!!(ONL&&((h===ONL.game&&(ONL.playing||ONL.over))||h==="online-duelo"||h==="online-coop")); document.body.classList.toggle("inonl", inO); if(!inO&&typeof onlBarOff==="function") onlBarOff(); if(typeof onlGaveBadge==="function") setTimeout(onlGaveBadge,0); window.scrollTo(0,0); app.className = ROUTES[h] ? "wrap game" : "wrap home"; const g=GAMES.find(x=>x.id===h);  app.dataset.game = h||"home"; if(g&&typeof CARD_KIT!=="undefined"){app.style.setProperty("--cb",CARD_KIT[h][0]);app.style.setProperty("--cf",CARD_KIT[h][1]);} app.style.setProperty("--gc", g?g.c:"#3e63dd"); app.style.setProperty("--gcd", g?g.ci:"#46a302"); if(ONL_SEED!=null && ONL && h===ONL.game){ const orig=Math.random; Math.random=mulberry(ONL_SEED); ONL_SEED=null; try{ ROUTES[h](); } finally { Math.random=orig; } } else (ROUTES[h]||home)(); requestAnimationFrame(fitAll); };
 
 fetch("data.json",{cache:"no-cache"}).then(r=>r.json()).then(d=>{
   D=d; P=d.players; CK=Object.keys(d.clubs);
