@@ -779,41 +779,79 @@ function partyEnd(){
    que el anfitrión valida (tipo, tamaño, ritmo, turno, ronda). Todo texto ajeno se escapa. WebRTC va cifrado (DTLS). */
 const ONL_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789", ONL_PREFIX = "formidablefut-v1-";
 let ONL = null, ONL_SEED = null;
-const onlAvail = () => typeof window.Peer === "function";
-const peerOpts = () => Object.assign({debug:0, config:{iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"}]}}, window.FFUT_PEER||{});
 const mkCode = () => { const a=new Uint32Array(6); crypto.getRandomValues(a); return [...a].map(x=>ONL_ALPHA[x%ONL_ALPHA.length]).join(""); };
 const mkSeed = () => { const a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]; };
 const mulberry = a => () => { a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };
 const cleanName = n => String(n||"").replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g,"").trim().slice(0,14);
 const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
+/* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
+   El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
+   servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
+const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
+const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
+const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
+const b64 = u => btoa(String.fromCharCode(...u)), unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+async function roomCrypto(code){
+  const enc=new TextEncoder(), base=await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey","deriveBits"]);
+  const key=await crypto.subtle.deriveKey({name:"PBKDF2", salt:enc.encode("formidablefut/sala/v1"), iterations:150000, hash:"SHA-256"}, base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+  const tb=new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode("formidablefut/tema/"+code)));
+  const topic="formidablefut/v1/"+[...tb.slice(0,12)].map(x=>x.toString(16).padStart(2,"0")).join("");
+  return {topic,
+    seal: async obj => { const iv=crypto.getRandomValues(new Uint8Array(12)); const ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(obj)))); const out=new Uint8Array(12+ct.length); out.set(iv); out.set(ct,12); return b64(out); },
+    open: async txt => { try{ const s=String(txt); if(s.length>40000) return null; const u=unb64(s); const pt=await crypto.subtle.decrypt({name:"AES-GCM", iv:u.slice(0,12)}, key, u.slice(12)); return JSON.parse(new TextDecoder().decode(pt)); }catch(e){ return null; } }};
+}
+function mqttConnect(url){
+  return new Promise((res, rej)=>{
+    const id="ff"+Math.random().toString(36).slice(2,12);
+    const c=window.mqtt.connect(url, {clientId:id, clean:true, connectTimeout:7000, reconnectPeriod:2000, keepalive:20, protocolVersion:4});
+    const t=setTimeout(()=>{ try{c.end(true);}catch(e){} rej(new Error("timeout")); }, 8000);
+    c.once("connect", ()=>{ clearTimeout(t); res(c); });
+    c.once("error", ()=>{});
+  });
+}
+const rid = n => { const a=crypto.getRandomValues(new Uint8Array(n)); return [...a].map(x=>"abcdefghijkmnpqrstuvwxyz23456789"[x%32]).join(""); };
 const onlSend = (conn, m) => { try{ if(conn && conn.open) conn.send(m); }catch(e){} };
-const onlBroadcast = m => { if(!ONL||ONL.role!=="host") return; ONL.conns.forEach(c=>onlSend(c, m)); onlHandle(m, true); };
+const onlBroadcast = m => { if(!ONL||ONL.role!=="host") return; ONL.pub("/all", m); onlHandle(m, true); };
 const onlPublic = () => ONL.players.map(p=>({n:p.n, s:p.s, on:p.on, h:p.h}));
 function onlLeave(msg){
-  if(ONL){ try{ if(ONL.role==="host") ONL.conns.forEach(c=>{ onlSend(c,{t:"closed"}); c.close(); }); else if(ONL.conn) ONL.conn.close(); ONL.peer.destroy(); }catch(e){} }
+  if(ONL){ try{ if(ONL.role==="host") ONL.pub("/all",{t:"closed"}); else if(ONL.conn) ONL.conn.send({t:"bye"}); }catch(e){}
+    const c=ONL.client, tm=ONL.timer; clearInterval(tm); setTimeout(()=>{ try{ c&&c.end(true); }catch(e){} }, 300); }
   ONL=null; document.body.classList.remove("inparty"); sheetOff();
   if(msg) store.set("onl-msg", msg);
-  location.hash="online";
+  if(location.hash==="#online") route(); else location.hash="online";
 }
 /* ---- anfitrión ---- */
-function onlHost(name){
-  const code=mkCode();
-  ONL={role:"host", code, me:0, players:[{n:name, s:0, on:true, h:[]}], conns:new Map(), cfg:store.get("onl-cfg",{rounds:5, games:[...SHOUT,...DUEL]}), r:-1, started:false, rate:new Map()};
-  const peer = new Peer(ONL_PREFIX+code.toLowerCase(), peerOpts()); ONL.peer=peer;
-  peer.on("open", ()=>{ ONL.sig=true; onlKeepAwake(); if(location.hash!=="#online-sala"&&!ONL.started) location.hash="online-sala"; else if(location.hash==="#online-sala") route(); });
-  peer.on("disconnected", ()=>{ if(!ONL||ONL.peer!==peer||peer.destroyed) return; ONL.sig=false; if(location.hash==="#online-sala") route(); setTimeout(()=>{ try{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); }catch(e){} }, 800); });
-  peer.on("error", e=>{ if(e && (e.type==="network"||e.type==="server-error"||e.type==="socket-error"||e.type==="socket-closed")) { setTimeout(()=>{ try{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); }catch(x){} }, 2000); return; }
-    if(e && e.type==="unavailable-id") { onlLeave("Ese código ya está en uso, prueba otra vez."); } else if(!ONL||!ONL.started) onlLeave("No se pudo crear la sala ("+(e&&e.type||"error")+")."); });
-  peer.on("connection", conn=>{
-    conn.on("open", ()=>{ if(!ONL) return conn.close(); });
-    conn.on("data", raw=>onlHostRecv(conn, raw));
-    conn.on("close", ()=>{ if(!ONL) return; const i=conn._pidx; if(i!=null && ONL.players[i]){ ONL.players[i].on=false; ONL.conns.delete(i); onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg}); onlCheckRaceEnd(); onlDuelSkip(); } });
+async function onlHost(name){
+  let client=null, url=null;
+  for(const u of BROKERS){ try{ client=await mqttConnect(u); url=u; break; }catch(e){} }
+  if(!client) return onlLeave("No hay conexión con el servidor de salas. Inténtalo en un momento.");
+  let code; do{ code=mkCode(); }while(brokerOf(code)!==url);
+  const cr=await roomCrypto(code);
+  ONL={role:"host", code, me:0, players:[{n:name, s:0, on:true, h:[]}], conns:new Map(), byGid:new Map(), cfg:store.get("onl-cfg",{rounds:5, games:[...SHOUT,...DUEL]}), r:-1, started:false, rate:new Map(), client, sig:true};
+  ONL.pub = async (sub, m) => { try{ client.publish(cr.topic+sub, await cr.seal(m)); }catch(e){} };
+  client.subscribe(cr.topic+"/h");
+  client.on("message", async (topic, payload)=>{
+    if(!ONL||ONL.client!==client||topic!==cr.topic+"/h") return;
+    const o=await cr.open(payload.toString()); if(!o||typeof o.g!=="string"||!/^[a-z0-9]{8,24}$/.test(o.g)||!o.m) return;
+    let conn=ONL.byGid.get(o.g);
+    if(!conn){ if(o.m.t!=="hello") return; conn={gid:o.g, open:true, seen:Date.now(), send:m=>ONL.pub("/g/"+o.g, m), close(){ if(!this.open) return; this.open=false; onlGone(this); }}; ONL.byGid.set(o.g, conn); }
+    if(!conn.open) return;
+    conn.seen=Date.now(); if(o.m.t==="ping") return;
+    onlHostRecv(conn, o.m);
   });
+  client.on("offline", ()=>{ if(ONL&&ONL.client===client){ ONL.sig=false; if(location.hash==="#online-sala") route(); } });
+  client.on("connect", ()=>{ if(ONL&&ONL.client===client&&ONL.sig===false){ ONL.sig=true; if(location.hash==="#online-sala") route(); } });
+  ONL.timer=setInterval(()=>{ if(!ONL) return; ONL.pub("/all",{t:"ping"}); const now=Date.now(); ONL.byGid.forEach(c=>{ if(c.open&&now-c.seen>30000) c.close(); }); }, 4000);
+  onlKeepAwake(); location.hash="online-sala";
+}
+function onlGone(conn){
+  if(!ONL) return; const i=conn._pidx;
+  if(i!=null && ONL.players[i]){ ONL.players[i].on=false; ONL.conns.delete(i); onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg}); onlCheckRaceEnd(); onlDuelSkip(); }
 }
 function onlHostRecv(conn, m){
   if(!ONL || typeof m!=="object" || !m || typeof m.t!=="string") return;
   const now=Date.now(), b=ONL.rate.get(conn)||[]; const recent=b.filter(x=>now-x<10000); recent.push(now); ONL.rate.set(conn,recent);
-  if(recent.length>30) { onlSend(conn,{t:"closed", why:"Demasiados mensajes"}); return conn.close(); }
+  if(recent.length>40) { onlSend(conn,{t:"closed", why:"Demasiados mensajes"}); return conn.close(); }
   if(m.t==="hello"){
     if(conn._pidx!=null) return;
     if(ONL.started) { onlSend(conn,{t:"closed", why:"La partida ya ha empezado"}); return setTimeout(()=>conn.close(),300); }
@@ -822,6 +860,7 @@ function onlHostRecv(conn, m){
     let n=cleanName(m.name)||"Jugador"; const taken=new Set(ONL.players.map(p=>p.n.toLowerCase())); let k=2, base=n; while(taken.has(n.toLowerCase())) n=(base.slice(0,11)+" "+k++);
     const idx=ONL.players.push({n, s:0, on:true, h:[]})-1; conn._pidx=idx; ONL.conns.set(idx, conn);
     onlSend(conn,{t:"welcome", you:idx, code:ONL.code});
+    onlSend(conn,{t:"lobby", players:onlPublic(), cfg:ONL.cfg});
     onlBroadcast({t:"lobby", players:onlPublic(), cfg:ONL.cfg});
     return;
   }
@@ -884,29 +923,33 @@ function onlDuelFinish(forced){
   d.win=w; onlAward(w); onlBroadcast({t:"duel", d}); onlBroadcast({t:"end", r:d.r, win:w, players:onlPublic(), duel:true});
 }
 /* ---- invitado ---- */
-function onlJoin(name, code){
+async function onlJoin(name, code){
   code=String(code||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6);
-  if(code.length!==6) return alertMsg("El código tiene 6 caracteres.");
-  ONL={role:"guest", code, me:null, players:[], cfg:null, r:-1};
-  const peer=new Peer(peerOpts()); ONL.peer=peer;
-  const fail=setTimeout(()=>{ if(ONL&&ONL.me==null) onlLeave("No encuentro la sala "+code+". Comprueba el código y que el móvil del anfitrión tenga la sala abierta en pantalla."); }, 20000);
-  const wire = conn => {
-    conn.on("open", ()=>onlSend(conn,{t:"hello", name, sig:DATA_SIG()}));
-    conn.on("data", m=>{ if(m&&m.t==="welcome") clearTimeout(fail); onlHandle(m,false); });
-    conn.on("close", ()=>{ if(ONL&&ONL.role==="guest"&&ONL.conn===conn&&ONL.me!=null) onlLeave("Se ha cerrado la sala."); });
-  };
-  peer.on("open", ()=>{ onlKeepAwake(); const conn=peer.connect(ONL_PREFIX+code.toLowerCase(), {reliable:true, serialization:"json"}); ONL.conn=conn; wire(conn); });
-  peer.on("disconnected", ()=>{ setTimeout(()=>{ try{ if(peer.disconnected&&!peer.destroyed) peer.reconnect(); }catch(e){} }, 800); });
-  let tries=0;
-  peer.on("error", e=>{
-    if(!ONL||ONL.role!=="guest") return;
-    if(e&&e.type==="peer-unavailable"&&ONL.me==null&&++tries<6){ setTimeout(()=>{ if(!ONL||ONL.me!=null) return; const c=peer.connect(ONL_PREFIX+code.toLowerCase(), {reliable:true, serialization:"json"}); ONL.conn=c; wire(c); }, 2500); return; }
-    clearTimeout(fail); onlLeave(e&&e.type==="peer-unavailable"?"No encuentro la sala "+code+". Comprueba el código y que el móvil del anfitrión tenga la sala abierta en pantalla.":"Error de conexión.");
+  if(code.length!==6 || [...code].some(c=>!ONL_ALPHA.includes(c))) return onlLeave("Ese código no es válido. Son 6 caracteres, sin I, L, O ni 0/1.");
+  let client; try{ client=await mqttConnect(brokerOf(code)); }catch(e){ return onlLeave("No hay conexión con el servidor de salas. Inténtalo en un momento."); }
+  const cr=await roomCrypto(code), gid=rid(12);
+  ONL={role:"guest", code, me:null, players:[], cfg:null, r:-1, client, last:Date.now()};
+  const send = async m => { try{ client.publish(cr.topic+"/h", await cr.seal({g:gid, m})); }catch(e){} };
+  ONL.conn={open:true, send};
+  client.subscribe([cr.topic+"/all", cr.topic+"/g/"+gid]);
+  client.on("message", async (topic, payload)=>{
+    if(!ONL||ONL.client!==client) return;
+    const m=await cr.open(payload.toString()); if(!m||typeof m.t!=="string") return;
+    ONL.last=Date.now();
+    if(m.t==="ping") return;
+    if(m.t==="lobby"&&ONL.me==null) return;
+    onlHandle(m,false);
   });
+  let tries=0;
+  const hello=()=>{ if(!ONL||ONL.client!==client||ONL.me!=null) return; if(++tries>8) return onlLeave("No encuentro la sala "+code+". Comprueba el código y que el anfitrión tenga la sala abierta en pantalla."); send({t:"hello", name, sig:DATA_SIG()}); setTimeout(hello, 2000); };
+  client.on("connect", ()=>{ if(ONL&&ONL.client===client&&ONL.me==null) send({t:"hello", name, sig:DATA_SIG()}); });
+  hello();
+  ONL.timer=setInterval(()=>{ if(!ONL||ONL.client!==client) return; send({t:"ping"}); if(ONL.me!=null && Date.now()-ONL.last>30000) onlLeave("Se ha perdido la conexión con la sala."); }, 4000);
+  onlKeepAwake();
 }
 let WAKE=null;
 const onlKeepAwake = async () => { try{ if(navigator.wakeLock&&!WAKE){ WAKE=await navigator.wakeLock.request("screen"); WAKE.addEventListener("release",()=>{ WAKE=null; }); } }catch(e){} };
-document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState!=="visible"||!ONL) return; onlKeepAwake(); try{ if(ONL.peer&&ONL.peer.disconnected&&!ONL.peer.destroyed) ONL.peer.reconnect(); }catch(e){} });
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState!=="visible"||!ONL) return; onlKeepAwake(); if(ONL.role==="guest") ONL.last=Date.now(); else ONL.byGid.forEach(c=>{ c.seen=Date.now(); }); try{ if(ONL.client&&!ONL.client.connected) ONL.client.reconnect(); }catch(e){} });
 const alertMsg = t => { store.set("onl-msg", t); route(); };
 /* ---- lo que ven todos (también el anfitrión, en local) ---- */
 function onlHandle(m, local){
