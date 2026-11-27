@@ -395,8 +395,8 @@ button.xcell:hover{box-shadow:inset 0 0 0 1.5px var(--ink)}
 #slots .opt.sl.zero::before{content:"0";color:#cf3324}
 #slots button.opt.sl:not(:disabled){box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--cb,#111)}
 #slots button.opt.sl:disabled{opacity:.6}
-.sl-ESP{background:#b5121b}.sl-ENG{background:#3d195b}.sl-ITA{background:#0a4ea2}.sl-FRA{background:#0b1e46}.sl-GER{background:#2a2a2a}
-.sl-UCL{background:#0b1a4f}.sl-CLUB{background:#1f7a2e}.sl-NT{background:#7a1630}.sl-TOT{background:#111}
+#slots .opt.sl.sl-ESP,.sl-ESP{background-color:#b5121b}#slots .opt.sl.sl-ENG,.sl-ENG{background-color:#3d195b}#slots .opt.sl.sl-ITA,.sl-ITA{background-color:#0a4ea2}#slots .opt.sl.sl-FRA,.sl-FRA{background-color:#0b1e46}#slots .opt.sl.sl-GER,.sl-GER{background-color:#2a2a2a}
+#slots .opt.sl.sl-UCL,.sl-UCL{background-color:#0b1a4f}#slots .opt.sl.sl-CLUB,.sl-CLUB{background-color:#1f7a2e}#slots .opt.sl.sl-NT,.sl-NT{background-color:#7a1630}#slots .opt.sl.sl-TOT,.sl-TOT{background-color:#111}
 #slots .opt.sl .sy{position:absolute;right:-10px;bottom:-12px;z-index:0;width:58px;height:58px;transform:rotate(-14deg);pointer-events:none}
 #slots .opt.sl svg.sy{fill:none;stroke:rgba(255,255,255,.3);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 #slots .opt.sl span.sy{width:auto;height:auto;font-size:50px;line-height:1;opacity:.55;right:-8px;bottom:-14px}
@@ -632,3 +632,13 @@ body.inonl #give{display:none!important}
 .xg.m-vs{box-shadow:inset 0 0 0 4px #c8322b;background:repeating-linear-gradient(135deg,rgba(200,50,43,.10) 0 10px,transparent 10px 20px)}
 .xg.m-coop{box-shadow:inset 0 0 0 4px #1f8a4c;background:rgba(31,138,76,.08)}
 .xg.m-coopvs{border:4px solid transparent;background:linear-gradient(var(--bg),var(--bg)) padding-box,linear-gradient(110deg,#1f8a4c 0 50%,#c8322b 50%) border-box;padding:6px}
+
+#slots .opt.sl,#slots .opt.sl .st,#slots .opt.sl b{color:#fff}
+#slots .opt.sl small{color:rgba(255,255,255,.85)}
+#slots button.opt.sl:disabled{opacity:.75}
+#slots .opt.sl.sl-UCL{background-image:radial-gradient(#fff 1px,transparent 1.5px);background-size:11px 11px}
+#slots .opt.sl.sl-CLUB{background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 14px,transparent 14px 28px)}
+
+.board .photo .cnum{color:#111}
+.wrap[data-game=pistas] .board .cl6 li.hid{color:var(--mute);box-shadow:inset 0 0 0 1px var(--line)}
+.wrap[data-game=pistas] .board .cl6 li:not(.hid){color:var(--ink)}
