@@ -659,13 +659,14 @@ const LRETO = ["reto-1000","reto-2000","reto-3000","reto-4000"];
 const partyGame = id => { if(LRETO.includes(id)){ const g=GAMES.find(x=>x.id==="reto-1000"); const t=LEVELS_1000[LRETO.indexOf(id)].t; return {...g, id, kit:"reto-1000", t:"Reto "+t, s:"Por turnos · gana quien lo supere con más goles"}; } const g=GAMES.find(x=>x.id===id); return g?{...g, kit:id}:null; };
 const curGame = () => partyGame(PARTY.order[PARTY.r]);
 const sheetOff = () => { const s=document.getElementById("sheet"); if(s) s.remove(); document.body.classList.remove("pdone"); };
+const PZ_ICON = '<svg class="pzi" viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="3.5" width="4" height="13" rx="1.6"/><rect x="11.5" y="3.5" width="4" height="13" rx="1.6"/></svg>';
 const armNext = () => {
   const b=document.getElementById("shgo"); if(!b) return; clearInterval(window.LNX); let left=5;
   b.insertAdjacentHTML("beforeend", ` <span class="cdn">${left}</span>`);
   const wrap=document.createElement("div"); wrap.className="nx"; b.parentNode.insertBefore(wrap,b); wrap.appendChild(b);
-  const pz=document.createElement("button"); pz.className="btn ghost pz"; pz.textContent="⏸"; pz.setAttribute("aria-label","Pausar"); wrap.appendChild(pz);
+  const pz=document.createElement("button"); pz.className="btn ghost pz"; pz.innerHTML=PZ_ICON; pz.setAttribute("aria-label","Pausar"); wrap.appendChild(pz);
   window.LNX=setInterval(()=>{ left--; const c=b.querySelector(".cdn"); if(c) c.textContent=left; if(left<=0){ clearInterval(window.LNX); b.click(); } }, 1000);
-  pz.onclick=()=>{ clearInterval(window.LNX); const c=b.querySelector(".cdn"); if(c) c.remove(); pz.disabled=true; pz.textContent="⏸ En pausa"; };
+  pz.onclick=()=>{ clearInterval(window.LNX); const c=b.querySelector(".cdn"); if(c) c.remove(); pz.disabled=true; pz.classList.add("on"); pz.innerHTML=PZ_ICON+"En pausa"; };
 };
 const nextRound = () => { clearInterval(window.LNX); sheetOff(); PARTY.r++; PARTY.playing=false; saveParty(); location.hash = PARTY.r>=PARTY.rounds ? "fiesta-fin" : "fiesta-turno"; };
 const showSheet = (cls, html) => { sheetOff(); document.body.classList.add("pdone"); const d=document.createElement("div"); d.id="sheet"; d.className="sheet "+cls; d.innerHTML=`<div class="sh-bg"></div><div class="sh-in">${html}</div>`; document.body.appendChild(d); return d; };
@@ -857,7 +858,7 @@ const DATA_SIG = () => P.length+"-"+CK.length+"-"+P.reduce((s,p)=>s+(p.g||0),0);
 /* ---- transporte: relé MQTT por WebSocket seguro (funciona en cualquier red, sin cuentas) + cifrado AES-GCM extremo a extremo ----
    El tema de la sala es un hash del código y cada mensaje va cifrado con una clave derivada del código (PBKDF2), así que el
    servidor público solo ve datos ilegibles. El anfitrión sigue siendo la autoridad. */
-const APP_V = "27.11-k";
+const APP_V = "27.11-l";
 const BROKERS = window.FFUT_BROKERS || ["wss://broker.emqx.io:8084/mqtt","wss://broker.hivemq.com:8884/mqtt","wss://test.mosquitto.org:8081"];
 const brokerOf = code => BROKERS[ONL_ALPHA.indexOf(code[0]) % BROKERS.length];
 const onlAvail = () => typeof window.mqtt === "object" && !!(window.crypto && crypto.subtle);
@@ -1163,13 +1164,13 @@ function onlHandle(m, local){
       const w=(Array.isArray(m.win)?m.win:[]).filter(i=>ONL.players[i]), names=w.map(i=>esc(ONL.players[i].n)).join(" y ");
       const mine=w.includes(ONL.me), last=ONL.r>=ONL.rounds-1;
       setTimeout(()=>{ const d=showSheet(w.length?"ok":"bad", `<span class="sh-ic">${w.length?"✓":"✕"}</span><div class="sh-tx"><b>${w.length?(mine&&w.length===1?"¡Punto para ti!":`Punto para ${names}`):"Nadie puntúa"}</b>${m.ans&&!mine?`<span class="ans">Ha dicho <strong>${esc(cleanAns(m.ans))}</strong></span>`:""}${m.note?`<span class="ans">${esc(String(m.note).slice(0,160))}</span>`:""}<small>${ONL.players.map(p=>`${esc(p.n)} ${p.s}`).join(" · ")}</small></div>
-        ${ONL.role==="host"?`<div class="nx"><button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"} <span id="cdn">5</span></button><button class="btn ghost pz" id="pz" aria-label="Pausar">⏸</button></div><button class="lnk" id="abort">Terminar partida y volver a la sala</button>`:`<p class="wait" id="gcd">${last?"Clasificación":"Siguiente ronda"} en 5…</p>`}`);
+        ${ONL.role==="host"?`<div class="nx"><button class="btn" id="shgo">${last?"Ver clasificación":"Siguiente ronda"} <span id="cdn">5</span></button><button class="btn ghost pz" id="pz" aria-label="Pausar"><svg class="pzi" viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="3.5" width="4" height="13" rx="1.6"/><rect x="11.5" y="3.5" width="4" height="13" rx="1.6"/></svg></button></div><button class="lnk" id="abort">Terminar partida y volver a la sala</button>`:`<p class="wait" id="gcd">${last?"Clasificación":"Siguiente ronda"} en 5…</p>`}`);
         clearInterval(ONL.nxT); let left=5;
         const b=document.getElementById("shgo"), go=()=>{ clearInterval(ONL.nxT); if(b) b.disabled=true; onlNextRound(ONL.r+1); };
         ONL.nxT=setInterval(()=>{ left--; const c=document.getElementById("cdn"), g=document.getElementById("gcd"); if(c) c.textContent=left; if(g) g.textContent=`${last?"Clasificación":"Siguiente ronda"} en ${Math.max(0,left)}…`; if(left<=0){ clearInterval(ONL.nxT); if(ONL.role==="host") go(); } }, 1000);
         if(b) b.onclick=go;
         const ab=document.getElementById("abort"); if(ab) ab.onclick=()=>{ clearInterval(ONL.nxT); if(confirm("¿Terminar la partida para todos y volver a la sala?")) onlAbort(); };
-        const pz=document.getElementById("pz"); if(pz) pz.onclick=()=>{ clearInterval(ONL.nxT); const c=document.getElementById("cdn"); if(c) c.textContent=""; pz.disabled=true; pz.textContent="⏸ En pausa"; onlBroadcast({t:"pause"}); };
+        const pz=document.getElementById("pz"); if(pz) pz.onclick=()=>{ clearInterval(ONL.nxT); const c=document.getElementById("cdn"); if(c) c.textContent=""; pz.disabled=true; pz.classList.add("on"); pz.innerHTML=PZ_ICON+"En pausa"; onlBroadcast({t:"pause"}); };
       }, m.duel?600:250);
       break; }
     case "final": clearInterval(ONL.nxT); ONL.retired=false; ONL.kind=null; onlBarOff(); if(okPlayers(m.players)) ONL.players=m.players.map(p=>({n:cleanName(p.n),s:p.s,on:!!p.on,ret:!!p.ret,h:p.h||[]})); ONL.playing=false; sheetOff(); location.hash="online-fin"; route(); break;

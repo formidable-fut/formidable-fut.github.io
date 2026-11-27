@@ -597,3 +597,9 @@ body.inonl #give{display:none!important}
 .rvc .dbar{margin:4px 0}
 .rvc .dbar i{background:var(--ink)}
 .gtog{display:inline-block;border-radius:30px;padding:9px 14px;font:600 14px var(--ui);background:var(--cb);color:var(--cf);text-decoration:none}
+
+.nx .btn{width:auto!important}
+.nx .btn:first-child{flex:1 1 auto}
+.nx .pz{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:52px;padding:0 14px}
+.pzi{width:18px;height:18px;fill:currentColor}
+.nx .pz.on{opacity:1;color:var(--mute);font:700 13px var(--ui)}
